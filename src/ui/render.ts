@@ -7,9 +7,16 @@ import { de } from "@/i18n/de";
 import type { AppState } from "@/shared/types";
 import { renderBrandCredit } from "@/ui/brand-credit";
 import { renderView } from "@/ui/views";
+import {
+  applyPosition,
+  persistPosition,
+  wirePositioning,
+  DEFAULT_POSITION,
+} from "@/ui/overlay-position";
 import STYLES from "@/ui/styles.css?raw";
 
 const STYLE_ID = "giso-styles";
+const POSITIONED_FLAG = "data-giso-position-wired";
 
 function injectStyles(shadow: ShadowRoot): void {
   if (shadow.getElementById(STYLE_ID)) return;
@@ -22,10 +29,11 @@ function injectStyles(shadow: ShadowRoot): void {
 export function renderApp(shadow: ShadowRoot, state: AppState, controller: AppController): void {
   injectStyles(shadow);
 
-  let overlay = shadow.querySelector<HTMLElement>(".giso-overlay");
-  if (!overlay) {
-    overlay = buildShell();
+  const existing = shadow.querySelector<HTMLElement>(".giso-overlay");
+  const overlay: HTMLElement = existing ?? buildShell();
+  if (!existing) {
     shadow.append(overlay);
+    wireHandleOnce(overlay);
   }
 
   const body = overlay.querySelector<HTMLElement>("[data-testid='giso-body']");
@@ -84,4 +92,32 @@ function buildNarrowWarning(): HTMLElement {
   warning.dataset["testid"] = "giso-narrow-warning";
   warning.textContent = de.narrowViewportWarning;
   return warning;
+}
+
+/**
+ * Wire overlay drag/keyboard once per shell. Idempotent via a marker so
+ * repeated renders do not stack listeners. Position is loaded and applied on
+ * first wire; subsequent drags persist on pointerup (spec §56.5).
+ */
+function wireHandleOnce(overlay: HTMLElement): void {
+  if (overlay.getAttribute(POSITIONED_FLAG) === "1") return;
+  overlay.setAttribute(POSITIONED_FLAG, "1");
+  applyPosition(overlay, DEFAULT_POSITION);
+  // Best-effort: load persisted position asynchronously and apply it.
+  void loadAndApply(overlay);
+  const handle = overlay.querySelector<HTMLElement>("[data-testid='giso-move-handle']");
+  if (!handle) return;
+  wirePositioning(overlay, handle, (pos) => {
+    void persistPosition(pos);
+  });
+}
+
+async function loadAndApply(overlay: HTMLElement): Promise<void> {
+  try {
+    const { loadPosition } = await import("@/ui/overlay-position");
+    const pos = await loadPosition();
+    applyPosition(overlay, pos);
+  } catch {
+    /* storage unavailable in some test contexts — keep defaults */
+  }
 }
