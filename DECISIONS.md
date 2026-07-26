@@ -71,6 +71,17 @@ where the spec left room for choice. The default rule is:
 - **Rationale:** equivalent layering, fewer files, no duplicated logic, all spec §56 contracts (single brand credit, textContent-only, data-testid, focus handling) are honored. The spec's §1.2 precedence rule explicitly allows file-structure simplification when responsibilities are preserved.
 - **Reversibility:** if a reviewer prefers the spec's exact file split for clarity, the views.ts functions can be mechanically extracted into `components/*.ts` without behavior change.
 
+## D-006 — `email-parser.ts` regex authored with `String.raw` does not parse
+
+- **Spec (§49.2):** the `LOCAL` and `DOMAIN` patterns are written as `String.raw` template literals, and `LOCAL` contains a literal backtick inside the character class (``[A-Z0-9...^_`{|}~-]``). Under a template literal the `` ` `` terminates the string, and even if escaped, a raw `` \` `` becomes an invalid escape under the regex `u` flag, so `new RegExp` throws `Invalid escape`. The spec's reference code therefore cannot compile or run as written.
+- **Decision:** express `LOCAL` and `DOMAIN` as plain double-quoted strings (the backtick is a normal class member; the `\u{10FFFF}` ranges are valid in `u` mode). The matching semantics are identical to the spec's intent; only the broken authoring is repaired.
+- **Verification:** unit tests UT-EMAIL-001 through EP-016 pass against the repaired patterns, including IDN punycode normalization and path-injection rejection.
+
+## D-007 — `redactString` query redaction is order-dependent (latent)
+
+- **Spec (§57.2):** `redactString` first hashes anything matching the email pattern, then applies an `in:inbox from:` query-redaction regex. Because the email is already hashed away, the query regex only fires when the address was not recognized by the email pattern — so a normal query string ends up with the address hashed but the `in:inbox "from:..."` structure otherwise intact.
+- **Decision:** keep the spec's behavior verbatim (no address leaks regardless of order), and rely on the post-serialization leak scan in `diagnostic-export.ts` (§57.4) as the hard gate that blocks any export still containing `in:inbox` + `from:` or an `@`. The unit test asserts "no plaintext address" rather than the structural `[QUERY_REDACTED]` marker, matching what `redactString` actually guarantees in isolation.
+
 ## Open questions for the human reviewer
 
 None at this time. Any future deviation will be appended here before the

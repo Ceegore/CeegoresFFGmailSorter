@@ -8,8 +8,14 @@ export interface ParsedEmailCandidate {
 export type EmailParseError =
   "EMPTY" | "CONTROL_CHARACTER" | "TOO_LONG" | "MULTIPLE_EMAILS" | "INVALID_SYNTAX";
 
-const LOCAL = String.raw`[A-Z0-9.!#$%&'*+/=?^_\`{|}~-]+`;
-const DOMAIN = String.raw`(?:[A-Z0-9\u0080-\u{10FFFF}](?:[A-Z0-9\u0080-\u{10FFFF}-]{0,61}[A-Z0-9\u0080-\u{10FFFF}])?)(?:\.(?:[A-Z0-9\u0080-\u{10FFFF}](?:[A-Z0-9\u0080-\u{10FFFF}-]{0,61}[A-Z0-9\u0080-\u{10FFFF}])?))+`;
+// Local-part and domain character classes. The spec (§49.2) authored these
+// with String.raw, but a raw backtick inside the local class is an invalid
+// escape under the regex `u` flag, so the classes are written as plain
+// strings here. The matching behavior is identical to the spec's intent.
+const LOCAL = "[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+";
+const DOMAIN =
+  "(?:[A-Z0-9\\u0080-\\u{10FFFF}](?:[A-Z0-9\\u0080-\\u{10FFFF}-]{0,61}[A-Z0-9\\u0080-\\u{10FFFF}])?)" +
+  "(?:\\.(?:[A-Z0-9\\u0080-\\u{10FFFF}](?:[A-Z0-9\\u0080-\\u{10FFFF}-]{0,61}[A-Z0-9\\u0080-\\u{10FFFF}])?))+";
 const EMAIL_FIND_PATTERN = new RegExp(`${LOCAL}@${DOMAIN}`, "giu");
 const ASCII_FULL_PATTERN =
   /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$/iu;
