@@ -9,6 +9,7 @@ import type { Store } from "@/app/store";
 import type { AppEvent } from "@/app/events";
 import type { AppState } from "@/shared/types";
 import { analyzeCurrentInbox } from "@/analyzer/inbox-analyzer";
+import { buildInboxSenderQuery, submitAndWaitUntilReady } from "@/gmail/search-controller";
 
 export interface AppController {
   readonly analyze: () => Promise<void>;
@@ -76,8 +77,36 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
     },
     async confirmSearch(): Promise<void> {
       dispatch({ type: "CONFIRM_SEARCH" });
-      // Phase 05 wires submit + waitUntilReady here.
-      await Promise.resolve();
+      await safeRun(async (signal) => {
+        const group = store
+          .getState()
+          .analysis?.groups.find((g) => g.id === store.getState().activeGroupId);
+        if (!group) {
+          dispatch({
+            type: "FAIL",
+            error: appError("GISO-INTERNAL-001", "internal", "no active group", true),
+          });
+          return;
+        }
+        const query = buildInboxSenderQuery(group.normalizedEmail);
+        dispatch({ type: "SEARCH_SUBMITTED", query });
+        const evidence = await submitAndWaitUntilReady(query, signal);
+        // Empty results end the workflow for this group with an error.
+        if (evidence.emptyStateDetected && !evidence.mailListDetected) {
+          dispatch({
+            type: "MARK_GROUP_ERROR",
+            groupId: group.id,
+            errorCode: "GISO-SEARCH-EMPTY-001",
+          });
+          dispatch({
+            type: "FAIL",
+            error: appError("GISO-SEARCH-EMPTY-001", "searchFailed", "no results", true),
+          });
+          return;
+        }
+        dispatch({ type: "SEARCH_READY" });
+        // Phase 06 wires selection here.
+      });
     },
     async confirmManualSelection(): Promise<void> {
       dispatch({ type: "MANUAL_SELECT_CONFIRMED" });
