@@ -10,6 +10,7 @@ import type { AppEvent } from "@/app/events";
 import type { AppState } from "@/shared/types";
 import { analyzeCurrentInbox } from "@/analyzer/inbox-analyzer";
 import { buildInboxSenderQuery, submitAndWaitUntilReady } from "@/gmail/search-controller";
+import { selectCurrentPage, trySelectAllMatches } from "@/gmail/selection-controller";
 
 export interface AppController {
   readonly analyze: () => Promise<void>;
@@ -49,6 +50,14 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
   const dispatch = (event: AppEvent): void => {
     store.dispatch(event);
   };
+  const restoreActiveGroupToReady = (): void => {
+    const { activeGroupId, analysis } = store.getState();
+    if (!activeGroupId || !analysis) return;
+    const group = analysis.groups.find((g) => g.id === activeGroupId);
+    if (group?.status === "in-progress") {
+      dispatch({ type: "MARK_GROUP_READY", groupId: activeGroupId });
+    }
+  };
   const safeRun = async (task: (signal: AbortSignal) => Promise<void>): Promise<void> => {
     abortController?.abort();
     abortController = new AbortController();
@@ -78,9 +87,8 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
     async confirmSearch(): Promise<void> {
       dispatch({ type: "CONFIRM_SEARCH" });
       await safeRun(async (signal) => {
-        const group = store
-          .getState()
-          .analysis?.groups.find((g) => g.id === store.getState().activeGroupId);
+        const state = store.getState();
+        const group = state.analysis?.groups.find((g) => g.id === state.activeGroupId);
         if (!group) {
           dispatch({
             type: "FAIL",
@@ -88,6 +96,8 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
           });
           return;
         }
+        // Fix F-001: mark the group in-progress so completion/error can advance it.
+        dispatch({ type: "MARK_GROUP_IN_PROGRESS", groupId: group.id });
         const query = buildInboxSenderQuery(group.normalizedEmail);
         dispatch({ type: "SEARCH_SUBMITTED", query });
         const evidence = await submitAndWaitUntilReady(query, signal);
@@ -105,11 +115,22 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
           return;
         }
         dispatch({ type: "SEARCH_READY" });
-        // Phase 06 wires selection here.
+
+        // Phase 06: select current page, then attempt select-all.
+        await selectCurrentPage(signal);
+        dispatch({ type: "PAGE_SELECTED" });
+        const outcome = await trySelectAllMatches(signal);
+        if (outcome === "manual-required") {
+          dispatch({ type: "MANUAL_SELECT_REQUIRED" });
+          return; // wait for confirmManualSelection()
+        }
+        dispatch({ type: "ALL_SELECTED" });
+        // Phase 07 wires move-menu opening here.
       });
     },
     async confirmManualSelection(): Promise<void> {
       dispatch({ type: "MANUAL_SELECT_CONFIRMED" });
+      // Phase 07 wires move-menu opening after manual selection.
       await Promise.resolve();
     },
     async reopenMoveMenu(): Promise<void> {
@@ -122,11 +143,14 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
     cancel(): void {
       abortController?.abort();
       abortController = null;
+      // Per A.11: abort without completion restores the active group to ready.
+      restoreActiveGroupToReady();
       dispatch({ type: "CANCELLED" });
     },
     resetSession(): void {
       abortController?.abort();
       abortController = null;
+      restoreActiveGroupToReady();
       dispatch({ type: "RETURN_TO_RESULTS" });
     },
     returnToResults(): void {

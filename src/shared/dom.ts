@@ -9,8 +9,10 @@ export function isInteractable(element: Element): element is HTMLElement {
   if (element.hasAttribute("disabled") || element.getAttribute("aria-disabled") === "true")
     return false;
   const style = window.getComputedStyle(element);
-  if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0)
-    return false;
+  if (style.display === "none" || style.visibility === "hidden") return false;
+  // Opacity may be the empty string (unset); treat that as fully opaque.
+  const opacity = style.opacity.trim();
+  if (opacity !== "" && Number(opacity) === 0) return false;
   const rect = element.getBoundingClientRect();
   return rect.width > 2 && rect.height > 2;
 }

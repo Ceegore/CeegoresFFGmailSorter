@@ -19,6 +19,7 @@ export type AppEvent =
   | { type: "TARGET_CHOICE_DETECTED" }
   | { type: "COMPLETION_CONFIRMED" }
   | { type: "IGNORE_GROUP"; groupId: string }
+  | { type: "MARK_GROUP_IN_PROGRESS"; groupId: string }
   | { type: "MARK_GROUP_READY"; groupId: string }
   | { type: "MARK_GROUP_DONE"; groupId: string }
   | { type: "MARK_GROUP_ERROR"; groupId: string; errorCode: string }

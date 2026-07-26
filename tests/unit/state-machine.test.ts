@@ -112,6 +112,39 @@ describe("state machine", () => {
     });
     expect(s.analysis?.groups[0]?.status).toBe("done");
   });
+  it("MARK_GROUP_IN_PROGRESS flips ready -> in-progress (fixes F-001)", () => {
+    const withResults = {
+      ...initialState,
+      workflow: "RESULTS_READY" as const,
+      analysis: analysis([group({ status: "ready" })]),
+    };
+    let s = reduceAppState(withResults, {
+      type: "MARK_GROUP_IN_PROGRESS",
+      groupId: "sender:a@example.com",
+    });
+    expect(s.analysis?.groups[0]?.status).toBe("in-progress");
+    // Now MARK_GROUP_ERROR must succeed (previously rejected because not in-progress).
+    s = reduceAppState(s, {
+      type: "MARK_GROUP_ERROR",
+      groupId: "sender:a@example.com",
+      errorCode: "GISO-SELECT-ALL-001",
+    });
+    expect(s.analysis?.groups[0]?.status).toBe("error");
+    expect(s.analysis?.groups[0]?.lastErrorCode).toBe("GISO-SELECT-ALL-001");
+  });
+  it("MARK_GROUP_IN_PROGRESS only works from ready", () => {
+    const withResults = {
+      ...initialState,
+      workflow: "RESULTS_READY" as const,
+      analysis: analysis([group({ status: "done" })]),
+    };
+    const s = reduceAppState(withResults, {
+      type: "MARK_GROUP_IN_PROGRESS",
+      groupId: "sender:a@example.com",
+    });
+    expect(s.analysis?.groups[0]?.status).toBe("done");
+    expect(s.diagnostics.at(-1)?.code).toBe("GISO-STATE-ILLEGAL-001");
+  });
 });
 
 describe("isCriticalWorkflow", () => {

@@ -99,13 +99,22 @@ function updateGroupEvent(
   state: AppState,
   event: Extract<
     AppEvent,
-    { type: "IGNORE_GROUP" | "MARK_GROUP_READY" | "MARK_GROUP_DONE" | "MARK_GROUP_ERROR" }
+    {
+      type:
+        | "IGNORE_GROUP"
+        | "MARK_GROUP_IN_PROGRESS"
+        | "MARK_GROUP_READY"
+        | "MARK_GROUP_DONE"
+        | "MARK_GROUP_ERROR";
+    }
   >,
 ): AppState {
   const next = replaceGroup(state, event.groupId, (group) => {
     switch (event.type) {
       case "IGNORE_GROUP":
         return group.status === "ready" ? { ...group, status: "ignored" } : group;
+      case "MARK_GROUP_IN_PROGRESS":
+        return group.status === "ready" ? { ...group, status: "in-progress" } : group;
       case "MARK_GROUP_READY": {
         if (!["in-progress", "error"].includes(group.status)) return group;
         const { lastErrorCode: _discarded, ...withoutError } = group;
@@ -230,6 +239,7 @@ export function reduceAppState(state: AppState, event: AppEvent): AppState {
           : { ...state, workflow: "IDLE", activeGroupId: null, expectedQuery: null, error: null }
         : illegal(state, event);
     case "IGNORE_GROUP":
+    case "MARK_GROUP_IN_PROGRESS":
     case "MARK_GROUP_READY":
     case "MARK_GROUP_DONE":
     case "MARK_GROUP_ERROR":

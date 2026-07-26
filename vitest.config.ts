@@ -9,6 +9,7 @@ export default defineConfig({
     clearMocks: true,
     restoreMocks: true,
     unstubGlobals: true,
+    setupFiles: ["./tests/setup.ts"],
     include: ["tests/unit/**/*.test.ts", "tests/integration/**/*.test.ts"],
     coverage: {
       provider: "v8",
