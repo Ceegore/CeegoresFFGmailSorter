@@ -11,6 +11,8 @@ import type { AppState } from "@/shared/types";
 import { analyzeCurrentInbox } from "@/analyzer/inbox-analyzer";
 import { buildInboxSenderQuery, submitAndWaitUntilReady } from "@/gmail/search-controller";
 import { selectCurrentPage, trySelectAllMatches } from "@/gmail/selection-controller";
+import { openMoveMenu } from "@/gmail/move-controller";
+import { isAutoConfirmed, readCompletionEvidence } from "@/gmail/completion-detector";
 
 export interface AppController {
   readonly analyze: () => Promise<void>;
@@ -57,6 +59,25 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
     if (group?.status === "in-progress") {
       dispatch({ type: "MARK_GROUP_READY", groupId: activeGroupId });
     }
+  };
+  // Open the native move menu, transition to WAITING_TARGET_SELECTION, then
+  // read completion evidence. The user chooses the label in Gmail (§55.3); we
+  // only observe. Auto-confirm at threshold, else leave VERIFYING_COMPLETION
+  // for confirmCompletion() (user "Ich bin fertig").
+  const openMoveAndAwaitTarget = async (groupId: string, signal: AbortSignal): Promise<void> => {
+    await openMoveMenu(signal);
+    dispatch({ type: "MOVE_MENU_OPENED" });
+    dispatch({ type: "TARGET_CHOICE_DETECTED" });
+    const baseline = document.querySelectorAll('[role="listitem"], tr[role="row"]').length;
+    const evidence = readCompletionEvidence({
+      expectedQuery: store.getState().expectedQuery,
+      baselineResultCount: baseline,
+    });
+    if (isAutoConfirmed(evidence)) {
+      dispatch({ type: "COMPLETION_CONFIRMED" });
+      dispatch({ type: "MARK_GROUP_DONE", groupId });
+    }
+    // Otherwise the UI shows the manual "Ich bin fertig" button -> confirmCompletion().
   };
   const safeRun = async (task: (signal: AbortSignal) => Promise<void>): Promise<void> => {
     abortController?.abort();
@@ -125,20 +146,26 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
           return; // wait for confirmManualSelection()
         }
         dispatch({ type: "ALL_SELECTED" });
-        // Phase 07 wires move-menu opening here.
+        await openMoveAndAwaitTarget(group.id, signal);
       });
     },
     async confirmManualSelection(): Promise<void> {
       dispatch({ type: "MANUAL_SELECT_CONFIRMED" });
-      // Phase 07 wires move-menu opening after manual selection.
-      await Promise.resolve();
+      await safeRun(async (signal) => {
+        const id = store.getState().activeGroupId;
+        if (id) await openMoveAndAwaitTarget(id, signal);
+      });
     },
     async reopenMoveMenu(): Promise<void> {
-      // Phase 07 re-resolves and clicks the move button on explicit user request.
-      await Promise.resolve();
+      await safeRun(async (signal) => {
+        const id = store.getState().activeGroupId;
+        if (id) await openMoveAndAwaitTarget(id, signal);
+      });
     },
     confirmCompletion(): void {
+      const id = store.getState().activeGroupId;
       dispatch({ type: "COMPLETION_CONFIRMED" });
+      if (id) dispatch({ type: "MARK_GROUP_DONE", groupId: id });
     },
     cancel(): void {
       abortController?.abort();
