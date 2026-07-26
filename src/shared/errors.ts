@@ -38,3 +38,29 @@ export function appError(
 ): AppError {
   return { code, userMessageKey, technicalMessage, recoverable, ...(details ? { details } : {}) };
 }
+
+/**
+ * Thrown error carrying an AppError payload. Throwing an Error instance keeps
+ * eslint's only-throw-error rule satisfied while letting callers recover the
+ * structured AppError via `toAppError`.
+ */
+export class GisoError extends Error {
+  readonly app: AppError;
+  constructor(app: AppError) {
+    super(app.technicalMessage);
+    this.name = "GisoError";
+    this.app = app;
+  }
+}
+
+export function throwAppError(app: AppError): never {
+  throw new GisoError(app);
+}
+
+export function toAppError(value: unknown): AppError {
+  if (value instanceof GisoError) return value.app;
+  if (value instanceof Error) {
+    return appError("GISO-INTERNAL-001", "internal", value.message, true);
+  }
+  return appError("GISO-INTERNAL-001", "internal", String(value), true);
+}

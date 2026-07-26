@@ -8,6 +8,7 @@ import type { ContentResponse } from "@/shared/messages";
 import type { Store } from "@/app/store";
 import type { AppEvent } from "@/app/events";
 import type { AppState } from "@/shared/types";
+import { analyzeCurrentInbox } from "@/analyzer/inbox-analyzer";
 
 export interface AppController {
   readonly analyze: () => Promise<void>;
@@ -65,16 +66,10 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
   return {
     async analyze(): Promise<void> {
       dispatch({ type: "START_ANALYSIS" });
-      await safeRun(
-        // Phase 04 makes this body truly async (adapter awaits + hovercard).
-        // eslint-disable-next-line @typescript-eslint/require-await -- placeholder until Phase 04
-        async () => {
-          dispatch({
-            type: "ANALYSIS_FAILED",
-            error: appError("GISO-SHELL-001", "gmailNotReady", "analyzer not wired", true),
-          });
-        },
-      );
+      await safeRun(async (signal) => {
+        const result = await analyzeCurrentInbox(signal);
+        dispatch({ type: "ANALYSIS_SUCCEEDED", result });
+      });
     },
     selectGroup(groupId: string): void {
       dispatch({ type: "SELECT_GROUP", groupId });
