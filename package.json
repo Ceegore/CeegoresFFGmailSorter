@@ -1,0 +1,49 @@
+{
+  "name": "gmail-inbox-sender-organizer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Firefox extension that groups recurring senders on the currently loaded Gmail inbox page and guides a safe native Gmail move workflow.",
+  "type": "module",
+  "engines": {
+    "node": ">=24 <26",
+    "npm": ">=11 <12"
+  },
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "build": "node scripts/build.mjs",
+    "verify:no-network": "node scripts/verify-no-network.mjs",
+    "verify:manifest": "node scripts/verify-manifest.mjs",
+    "verify:dist": "node scripts/verify-dist.mjs",
+    "verify:security": "npm audit --audit-level=high",
+    "webext:lint": "web-ext lint --source-dir dist --warnings-as-errors",
+    "webext:run": "web-ext run --source-dir dist --firefox-profile ./.firefox-profile --keep-profile-changes",
+    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run verify:no-network && npm run verify:manifest && npm run verify:dist && npm run webext:lint && npm run test:e2e && npm run verify:security",
+    "package": "node scripts/package.mjs",
+    "release:check": "npm ci && npm run verify && npm run package"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.61.1",
+    "@types/firefox-webext-browser": "143.0.0",
+    "@types/node": "24.10.6",
+    "@vitest/coverage-v8": "4.1.10",
+    "eslint": "10.8.0",
+    "globals": "17.7.0",
+    "jsdom": "29.1.1",
+    "prettier": "3.9.6",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0",
+    "vite": "8.1.5",
+    "vitest": "4.1.10",
+    "web-ext": "10.5.0"
+  }
+}

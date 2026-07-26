@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+playwright-report
+test-results
+artifacts
+.firefox-profile
+package-lock.json
+*.xpi
+*.zip
+# The locked product spec must stay byte-identical (docs/SPEC_SHA256.txt).
+docs/PRODUCT_SPEC.md

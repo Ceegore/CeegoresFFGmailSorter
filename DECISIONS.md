@@ -14,13 +14,13 @@ where the spec left room for choice. The default rule is:
 
 - **Spec baseline (§42):** Node.js `24.18.0`, npm `11.16.0`.
 - **Observed environment:** Node.js `25.8.0`, npm `11.11.0`.
-- **Decision:** Keep the spec's exact *dependency* pins (§42.1) unchanged — they
-  are the supply-chain contract. Relax the *engine* pins so the project is
+- **Decision:** Keep the spec's exact _dependency_ pins (§42.1) unchanged — they
+  are the supply-chain contract. Relax the _engine_ pins so the project is
   installable and reproducible in the agent's environment without silently
   rewriting dependency versions. `package.json#engines` is widened to allow
   Node 24 or 25 and npm 11, and `.npmrc` keeps `engine-strict=true` so any
   further drift is still caught loudly rather than silently.
-- **Rationale:** The §42.3 upgrade gate exists to prevent *dependency* drift;
+- **Rationale:** The §42.3 upgrade gate exists to prevent _dependency_ drift;
   the engine field is a developer-machine convenience. Widening engines does
   not change any shipped code, permission, or build artifact. A clean-room
   release build (§68.2) must still be performed on the pinned Node/npm before
@@ -55,6 +55,21 @@ where the spec left room for choice. The default rule is:
   `artifacts/evidence/phase-12-release/`, plus `tests/e2e/manual-live-checklist.md`.
 
 ---
+
+## D-004 — `strict_min_version` bumped 140.0 → 142.0
+
+- **Spec (§11, §44.12):** `strict_min_version: "140.0"` AND `data_collection_permissions: { required: ["none"] }`, plus `web-ext:lint` run with `--warnings-as-errors`.
+- **Conflict:** web-ext 10.5.0's linter emits `KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION` because Firefox for Android only introduced support for `browser_specific_settings.gecko.data_collection_permissions` in version 142. The spec pins `strict_min_version: 140.0`, so the two locked manifest values are mutually unsatisfiable under the locked lint gate.
+- **Decision (human-approved):** raise `strict_min_version` to `142.0`. This keeps `data_collection_permissions` (the stronger privacy signal) and the `--warnings-as-errors` lint gate intact. Both `public/manifest.json` and `scripts/verify-manifest.mjs` were updated to require `142.0`.
+- **Impact:** the extension is Firefox-Desktop-only per spec §3.3 regardless; the desktop minimum rises from 140 to 142. Users on desktop Firefox 140/141 would no longer be eligible to install. Given Firefox 142 is the current release line (July 2026), this is acceptable.
+- **Spec text not edited:** the spec file under `docs/PRODUCT_SPEC.md` is left unchanged (it stays the locked reference). This decision document is the authoritative override for the build.
+
+## D-005 — `lifetime-manager.ts` and per-view component files consolidated
+
+- **Spec (§24 file tree):** lists `src/content/lifetime-manager.ts` as a separate file and `src/ui/components/{header,analysis-view,...}.ts` as separate files.
+- **Decision:** lifetime management is fully covered by `src/content/bootstrap.ts` (appendix A.9 already implements dispose/route-observer wiring), so a separate `lifetime-manager.ts` would be an empty wrapper — its responsibilities are absorbed into `bootstrap.ts`. Likewise the per-view bodies are consolidated into `src/ui/views.ts` (one dispatcher + one function per view) and the shell/credit into `src/ui/render.ts`, rather than ~9 tiny component files. The header is built inline in `render.ts`.
+- **Rationale:** equivalent layering, fewer files, no duplicated logic, all spec §56 contracts (single brand credit, textContent-only, data-testid, focus handling) are honored. The spec's §1.2 precedence rule explicitly allows file-structure simplification when responsibilities are preserved.
+- **Reversibility:** if a reviewer prefers the spec's exact file split for clarity, the views.ts functions can be mechanically extracted into `components/*.ts` without behavior change.
 
 ## Open questions for the human reviewer
 

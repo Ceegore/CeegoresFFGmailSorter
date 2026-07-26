@@ -1,0 +1,336 @@
+/* Inbox Sender Organizer — overlay styles. Lives inside the open Shadow Root
+   so Gmail CSS cannot leak in or out. Design tokens from spec §56.1. */
+:host {
+  --giso-font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --giso-bg: #ffffff;
+  --giso-surface: #f7f8fa;
+  --giso-text: #1f2328;
+  --giso-muted: #5b6472;
+  --giso-border: #d8dee8;
+  --giso-primary: #0b57d0;
+  --giso-primary-hover: #0847ad;
+  --giso-danger: #b3261e;
+  --giso-warning: #8a4f00;
+  --giso-success: #137333;
+  --giso-focus: #1a73e8;
+  --giso-radius: 12px;
+  --giso-shadow: 0 12px 40px rgb(0 0 0 / 22%);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :host {
+    --giso-bg: #202124;
+    --giso-surface: #292a2d;
+    --giso-text: #e8eaed;
+    --giso-muted: #bdc1c6;
+    --giso-border: #4a4d52;
+    --giso-primary: #8ab4f8;
+    --giso-primary-hover: #aecbfa;
+    --giso-danger: #f28b82;
+    --giso-warning: #fdd663;
+    --giso-success: #81c995;
+    --giso-focus: #8ab4f8;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.giso-overlay {
+  position: fixed;
+  top: var(--giso-overlay-top, 80px);
+  right: var(--giso-overlay-right, 16px);
+  width: 380px;
+  max-width: min(380px, calc(100vw - 32px));
+  max-height: calc(100vh - 112px);
+  display: flex;
+  flex-direction: column;
+  background: var(--giso-bg);
+  color: var(--giso-text);
+  border: 1px solid var(--giso-border);
+  border-radius: var(--giso-radius);
+  box-shadow: var(--giso-shadow);
+  font-family: var(--giso-font);
+  font-size: 14px;
+  line-height: 1.45;
+  overflow: hidden;
+}
+@media (max-width: 720px) {
+  .giso-overlay {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: 55vh;
+  }
+}
+
+.giso-overlay__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--giso-border);
+  background: var(--giso-surface);
+  cursor: move;
+}
+.giso-overlay__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  flex: 1;
+}
+.giso-overlay__handle {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--giso-muted);
+  cursor: move;
+  font-size: 12px;
+  padding: 4px;
+}
+
+.giso-overlay__body {
+  padding: 14px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.giso-overlay__footer {
+  padding: 6px 14px 10px;
+}
+
+.giso-status {
+  margin: 0 0 8px;
+  color: var(--giso-muted);
+  font-size: 13px;
+}
+
+.giso-hint {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  background: var(--giso-surface);
+  border-radius: 8px;
+  color: var(--giso-muted);
+  font-size: 12px;
+}
+
+.giso-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.giso-btn {
+  appearance: none;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 9px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--giso-border);
+  background: var(--giso-surface);
+  color: var(--giso-text);
+  cursor: pointer;
+  text-align: center;
+}
+.giso-btn:focus-visible {
+  outline: 2px solid var(--giso-focus);
+  outline-offset: 2px;
+}
+.giso-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.giso-btn--primary {
+  background: var(--giso-primary);
+  border-color: var(--giso-primary);
+  color: #fff;
+}
+.giso-btn--primary:hover:not(:disabled) {
+  background: var(--giso-primary-hover);
+  border-color: var(--giso-primary-hover);
+}
+.giso-btn--danger {
+  color: var(--giso-danger);
+}
+.giso-btn--link {
+  background: transparent;
+  border: 0;
+  color: var(--giso-primary);
+  padding: 4px;
+  text-align: left;
+}
+
+.giso-error {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: rgb(179 38 30 / 12%);
+  border: 1px solid var(--giso-danger);
+  border-radius: 8px;
+  color: var(--giso-text);
+}
+.giso-error__code {
+  display: block;
+  margin-top: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--giso-muted);
+}
+
+.giso-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 8px;
+  border: 2px solid var(--giso-border);
+  border-top-color: var(--giso-primary);
+  border-radius: 50%;
+  animation: giso-spin 0.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .giso-spinner {
+    animation: none;
+  }
+}
+@keyframes giso-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.giso-meter {
+  list-style: none;
+  margin: 8px 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--giso-muted);
+  font-size: 12px;
+}
+
+.giso-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.giso-input,
+.giso-select {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--giso-border);
+  border-radius: 6px;
+  background: var(--giso-bg);
+  color: var(--giso-text);
+  flex: 1;
+  min-width: 0;
+}
+.giso-input:focus-visible,
+.giso-select:focus-visible {
+  outline: 2px solid var(--giso-focus);
+  outline-offset: 1px;
+}
+
+.giso-group-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.giso-group {
+  border: 1px solid var(--giso-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--giso-bg);
+}
+.giso-group__name {
+  font-weight: 600;
+  font-size: 14px;
+}
+.giso-group__email {
+  display: block;
+  color: var(--giso-muted);
+  font-size: 12px;
+  word-break: break-all;
+}
+.giso-group__badge {
+  display: inline-block;
+  margin: 4px 0;
+  padding: 1px 8px;
+  font-size: 11px;
+  border-radius: 999px;
+  background: var(--giso-surface);
+  color: var(--giso-muted);
+}
+.giso-group--ignored {
+  opacity: 0.55;
+}
+.giso-group--done .giso-group__badge {
+  background: rgb(19 115 51 / 16%);
+  color: var(--giso-success);
+}
+
+.giso-steps {
+  list-style: none;
+  margin: 8px 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.giso-step {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--giso-muted);
+}
+.giso-step[data-status="done"] {
+  color: var(--giso-success);
+}
+.giso-step[data-status="active"] {
+  color: var(--giso-text);
+  font-weight: 600;
+}
+.giso-step[data-status="help"] {
+  color: var(--giso-warning);
+}
+.giso-step[data-status="failed"] {
+  color: var(--giso-danger);
+}
+
+.giso-query {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background: var(--giso-surface);
+  border-radius: 6px;
+  padding: 6px 8px;
+  word-break: break-all;
+}
+
+.giso-dialog {
+  position: relative;
+}
+
+.giso-narrow-warning {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgb(138 79 0 / 14%);
+  color: var(--giso-warning);
+  font-size: 12px;
+}
+
+.giso-brand-credit {
+  margin: 8px 0 0;
+  font-size: 10px;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--giso-muted);
+  user-select: text;
+}

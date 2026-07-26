@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Inbox Sender Organizer",
+  "version": "1.0.0",
+  "description": "Gruppiert wiederkehrende Absender auf der aktuell geladenen Gmail-Inbox-Seite und unterstützt das sichere globale Verschieben über Gmails native Oberfläche.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://mail.google.com/*"],
+  "background": { "scripts": ["background.js"] },
+  "action": {
+    "default_title": "Inbox Sender Organizer",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "96": "icons/icon-96.png"
+    }
+  },
+  "content_scripts": [
+    { "matches": ["https://mail.google.com/*"], "js": ["content.js"], "run_at": "document_idle" }
+  ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png"
+  },
+  "incognito": "not_allowed",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "{a3f84f1e-3947-4fe6-8d31-6d5deff1ae71}",
+      "strict_min_version": "142.0",
+      "data_collection_permissions": { "required": ["none"] }
+    }
+  }
+}
