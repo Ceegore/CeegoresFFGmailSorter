@@ -3,7 +3,7 @@
 // to GISO-INTERNAL-001 (spec appendix A.11). Effect orchestration is filled in
 // across Phases 04–08; the public contract below is stable.
 import { isAbortError } from "@/shared/abort";
-import { appError } from "@/shared/errors";
+import { appError, GisoError } from "@/shared/errors";
 import type { ContentResponse } from "@/shared/messages";
 import type { Store } from "@/app/store";
 import type { AppEvent } from "@/app/events";
@@ -87,10 +87,12 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
       await task(signal);
     } catch (error: unknown) {
       if (isAbortError(error)) return;
-      dispatch({
-        type: "FAIL",
-        error: appError("GISO-INTERNAL-001", "internal", toTechnicalMessage(error), true),
-      });
+      // Preserve a structured GisoError's code/message; wrap anything else.
+      const wrapped =
+        error instanceof GisoError
+          ? error.app
+          : appError("GISO-INTERNAL-001", "internal", toTechnicalMessage(error), true);
+      dispatch({ type: "FAIL", error: wrapped });
     }
   };
 

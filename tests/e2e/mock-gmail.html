@@ -1,0 +1,224 @@
+<!doctype html>
+<!--
+GISO SYNTHETIC MOCK SPA
+fixture-id: MOCK-GMAIL-SPA-001
+source: manually authored synthetic structure
+contains-real-user-data: false
+gmail-ui-locale: de
+purpose: Playwright mock-E2E (spec §59.4)
+-->
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <title>Mock Gmail</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 0;
+        padding: 16px;
+        background: #fff;
+        color: #1f2328;
+      }
+      nav {
+        margin-bottom: 12px;
+      }
+      nav a {
+        margin-right: 12px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 8px;
+        border-bottom: 1px solid #d8dee8;
+      }
+      .row {
+        padding: 8px;
+        border-bottom: 1px solid #eee;
+        cursor: pointer;
+      }
+      .row.selected {
+        background: #e8f0fe;
+      }
+      .menu {
+        display: none;
+        position: fixed;
+        top: 120px;
+        right: 80px;
+        background: #fff;
+        border: 1px solid #d8dee8;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        padding: 12px;
+        z-index: 100;
+      }
+      .menu.open {
+        display: block;
+      }
+      .snackbar {
+        display: none;
+        position: fixed;
+        bottom: 16px;
+        left: 16px;
+        background: #202124;
+        color: #fff;
+        padding: 10px 14px;
+        border-radius: 6px;
+        z-index: 100;
+      }
+      .snackbar.open {
+        display: block;
+      }
+      .banner {
+        display: none;
+        padding: 6px 10px;
+        background: #e8f0fe;
+        margin: 8px 0;
+      }
+      .banner.open {
+        display: block;
+      }
+      #test-controls {
+        position: fixed;
+        top: 8px;
+        right: 8px;
+        font-size: 12px;
+        color: #888;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="test-controls">GISO MOCK SPA</div>
+    <nav role="navigation" aria-label="Hauptmenü">
+      <a href="#inbox" aria-label="Posteingang">Posteingang</a>
+      <a href="#starred">Markiert</a>
+    </nav>
+
+    <div role="main">
+      <div class="toolbar" role="toolbar">
+        <input id="search" type="text" aria-label="Suche" placeholder="Suche" />
+        <button id="search-btn" type="button" aria-label="Suche">Suchen</button>
+        <label><input id="select-page" type="checkbox" /> Seite auswählen</label>
+        <button id="move-btn" type="button">Verschieben nach</button>
+      </div>
+
+      <div id="banner" class="banner" role="status">
+        <button id="select-all-btn" type="button">
+          Alle Unterhaltungen auswählen, die dieser Suche entsprechen
+        </button>
+      </div>
+
+      <div id="list" role="list"></div>
+    </div>
+
+    <div id="move-menu" class="menu" role="dialog" aria-label="Verschieben nach">
+      <input id="menu-search" type="text" placeholder="Label suchen" />
+      <ul>
+        <li><button class="label-opt" type="button">Work</button></li>
+        <li><button class="label-opt" type="button">Personal</button></li>
+      </ul>
+    </div>
+
+    <div id="snackbar" class="snackbar" role="status">
+      Verschoben. <button id="undo" type="button">Rückgängig</button>
+    </div>
+
+    <script>
+      // Synthetic senders — reserved domains only (spec §59.1).
+      const SENDERS = [
+        { email: "newsletter-alpha@example.com", name: "Alpha News", fp: "t-1" },
+        { email: "newsletter-alpha@example.com", name: "Alpha News", fp: "t-2" },
+        { email: "newsletter-alpha@example.com", name: "Alpha News", fp: "t-3" },
+        { email: "billing@example.org", name: "Rechnung", fp: "t-4" },
+        { email: "billing@example.org", name: "Rechnung", fp: "t-5" },
+        { email: "single@example.net", name: "Einmalig", fp: "t-6" },
+      ];
+
+      const state = { view: "inbox", query: "", selected: new Set(), moved: false };
+
+      const list = document.getElementById("list");
+      const search = document.getElementById("search");
+      const searchBtn = document.getElementById("search-btn");
+      const selectPage = document.getElementById("select-page");
+      const moveBtn = document.getElementById("move-btn");
+      const moveMenu = document.getElementById("move-menu");
+      const banner = document.getElementById("banner");
+      const selectAllBtn = document.getElementById("select-all-btn");
+      const snackbar = document.getElementById("snackbar");
+
+      function renderRows() {
+        list.innerHTML = "";
+        const rows =
+          state.view === "search" && state.query
+            ? SENDERS.filter((s) => s.email === state.query)
+            : SENDERS;
+        for (const s of rows) {
+          const row = document.createElement("div");
+          row.className = "row" + (state.selected.has(s.fp) ? " selected" : "");
+          row.setAttribute("role", "listitem");
+          row.setAttribute("data-thread-id", s.fp);
+          const span = document.createElement("span");
+          span.setAttribute("email", s.email);
+          span.textContent = s.name + " <" + s.email + ">";
+          row.appendChild(span);
+          list.appendChild(row);
+        }
+      }
+
+      function doSearch() {
+        const q = search.value;
+        const m = /from:([^"]+)"/.exec(q) || /from:(\S+)/.exec(q);
+        state.query = m ? m[1].replace(/"/g, "") : "";
+        state.view = "search";
+        state.selected.clear();
+        location.hash = "#search/from:" + (state.query || "x");
+        banner.classList.remove("open");
+        renderRows();
+        // Show the select-all banner if more than one result and not all on page.
+        const shown = list.querySelectorAll("[role=listitem]").length;
+        if (shown > 1) banner.classList.add("open");
+      }
+
+      searchBtn.addEventListener("click", doSearch);
+      search.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") doSearch();
+      });
+
+      selectPage.addEventListener("click", () => {
+        const rows = list.querySelectorAll("[role=listitem]");
+        const on = selectPage.checked;
+        rows.forEach((r) => {
+          const fp = r.getAttribute("data-thread-id");
+          if (on) state.selected.add(fp);
+          else state.selected.delete(fp);
+        });
+        renderRows();
+      });
+
+      selectAllBtn.addEventListener("click", () => {
+        const rows = list.querySelectorAll("[role=listitem]");
+        rows.forEach((r) => state.selected.add(r.getAttribute("data-thread-id")));
+        banner.textContent = "Alle " + rows.length + " Unterhaltungen ausgewählt";
+        renderRows();
+      });
+
+      moveBtn.addEventListener("click", () => {
+        moveMenu.classList.add("open");
+      });
+      document.querySelectorAll(".label-opt").forEach((b) => {
+        b.addEventListener("click", () => {
+          moveMenu.classList.remove("open");
+          // Remove the selected rows and show the move snackbar.
+          state.moved = true;
+          state.selected.clear();
+          renderRows();
+          snackbar.classList.add("open");
+        });
+      });
+
+      // Test hook: expose state for assertions.
+      window.__gisoMock = state;
+      window.__gisoDoSearch = doSearch;
+      renderRows();
+    </script>
+  </body>
+</html>

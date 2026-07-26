@@ -22,6 +22,19 @@ export function bootstrap(): void {
     const unsubscribe = store.subscribe((state) => {
       renderApp(shadow, state, controller);
     });
+    // Expose a minimal test bridge so Playwright can open the overlay without
+    // the browser-action toggle. This mirrors the background's SHOW_OVERLAY
+    // message and is harmless in production (the toolbar action uses the same
+    // code path). It is never used for data extraction.
+    const testBridge = globalThis as typeof globalThis & {
+      __gisoController?: typeof controller;
+      __gisoShowOverlay?: () => void;
+    };
+    testBridge.__gisoController = controller;
+    testBridge.__gisoShowOverlay = () => {
+      // Result is intentionally discarded; the store subscription re-renders.
+      void controller.handleBackgroundMessage("SHOW_OVERLAY");
+    };
     renderApp(shadow, store.getState(), controller);
 
     const routeObserver = observeRoutes(() => {
@@ -32,16 +45,25 @@ export function bootstrap(): void {
     // Firefox supports listeners that return a Promise resolving to the
     // response. The bundled WebExtension types allow a Promise return, so we
     // always return a Promise<ContentResponse> and narrow the message inside.
-    type RuntimeListener = Parameters<typeof browser.runtime.onMessage.addListener>[0];
-    const listener: RuntimeListener = (message: unknown): Promise<ContentResponse> => {
-      const typed = message as Partial<BackgroundToContentMessage>;
-      if (typed.type !== "TOGGLE_OVERLAY" && typed.type !== "SHOW_OVERLAY") {
-        return Promise.resolve<ContentResponse>({ ok: false, error: "Unsupported message" });
-      }
-      const result = controller.handleBackgroundMessage(typed.type);
-      return Promise.resolve(result);
-    };
-    browser.runtime.onMessage.addListener(listener);
+    // In a non-extension context (mock E2E) `browser.runtime` is absent; skip
+    // listener registration there — the test bridge drives the overlay instead.
+    let removeRuntimeListener: (() => void) | null = null;
+    const runtime = typeof browser !== "undefined" ? browser.runtime : undefined;
+    if (runtime?.onMessage) {
+      type RuntimeListener = Parameters<typeof runtime.onMessage.addListener>[0];
+      const listener: RuntimeListener = (message: unknown): Promise<ContentResponse> => {
+        const typed = message as Partial<BackgroundToContentMessage>;
+        if (typed.type !== "TOGGLE_OVERLAY" && typed.type !== "SHOW_OVERLAY") {
+          return Promise.resolve<ContentResponse>({ ok: false, error: "Unsupported message" });
+        }
+        const result = controller.handleBackgroundMessage(typed.type);
+        return Promise.resolve(result);
+      };
+      runtime.onMessage.addListener(listener);
+      removeRuntimeListener = () => {
+        runtime.onMessage.removeListener(listener);
+      };
+    }
 
     const onPageHide = (event: PageTransitionEvent): void => {
       if (!event.persisted) dispose();
@@ -56,7 +78,7 @@ export function bootstrap(): void {
       controller.dispose();
       routeObserver.dispose();
       unsubscribe();
-      browser.runtime.onMessage.removeListener(listener);
+      removeRuntimeListener?.();
       window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("pageshow", onPageShow);
       host.remove();

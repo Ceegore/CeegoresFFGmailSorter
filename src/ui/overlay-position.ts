@@ -52,7 +52,11 @@ export function wirePositioning(
     if (event.button !== 0) return;
     dragStart = { x: event.clientX, y: event.clientY, top: current.top, right: current.right };
     preDragPosition = current;
-    handle.setPointerCapture(event.pointerId);
+    try {
+      handle.setPointerCapture(event.pointerId);
+    } catch {
+      /* pointer capture optional; some test environments lack it */
+    }
   };
   const onPointerMove = (event: PointerEvent): void => {
     if (!dragStart) return;
