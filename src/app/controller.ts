@@ -177,13 +177,19 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
       });
     },
     async confirmManualSelection(): Promise<void> {
-      dispatch({ type: "MANUAL_SELECT_CONFIRMED" });
+      // SAFE_MODE: the automated move path is disabled; this is a no-op.
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      if (SAFE_MODE) return;
+      if (!dispatch({ type: "MANUAL_SELECT_CONFIRMED" }).accepted) return;
       await safeRun(async (signal) => {
         const id = store.getState().activeGroupId;
         if (id) await openMoveAndAwaitTarget(id, signal);
       });
     },
     async reopenMoveMenu(): Promise<void> {
+      // SAFE_MODE: the automated move path is disabled; this is a no-op.
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      if (SAFE_MODE) return;
       await safeRun(async (signal) => {
         const id = store.getState().activeGroupId;
         if (id) await openMoveAndAwaitTarget(id, signal);
@@ -207,11 +213,10 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
       // Per A.11: abort without completion restores the active group to ready.
       restoreActiveGroupToReady();
       dispatch({ type: "CANCELLED" });
-      // BUG-050: CANCELLED is not a persistent usable state — immediately move
-      // to a safe terminal (results if analysis exists, else IDLE via RETURN).
-      if (store.getState().analysis) {
-        dispatch({ type: "RETURN_TO_RESULTS" });
-      }
+      // BUG-050: CANCELLED is never a persistent usable state. Always follow
+      // with RETURN_TO_RESULTS — it lands on RESULTS_READY if analysis exists,
+      // or IDLE otherwise. Never leave the user stuck in CANCELLED.
+      dispatch({ type: "RETURN_TO_RESULTS" });
     },
     resetSession(): void {
       abortController?.abort();
