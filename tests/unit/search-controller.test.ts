@@ -100,6 +100,7 @@ describe("search controller", () => {
     installGmailSearchDom(() => {
       window.location.hash = "#search/from:x";
       const banner = document.createElement("div");
+      banner.setAttribute("role", "status");
       banner.textContent = "Ähnliche Ergebnisse";
       document.body.append(banner);
     });

@@ -47,9 +47,10 @@ describe("findMoveControl", () => {
 });
 
 describe("findMoveMenu", () => {
-  it("detects a dialog with a label option and a search field (>=2 markers)", () => {
+  it("detects a dialog with move text + label option + search field", () => {
     const dialog = document.createElement("div");
     dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-label", "Verschieben nach");
     const search = document.createElement("input");
     search.type = "text";
     const opt = document.createElement("button");
@@ -72,9 +73,10 @@ describe("openMoveMenu", () => {
     btn.addEventListener("click", () => {
       const dialog = document.createElement("div");
       dialog.setAttribute("role", "dialog");
+      dialog.setAttribute("aria-label", "Verschieben nach");
       const search = document.createElement("input");
       search.type = "text";
-      const label = document.createElement("button"); // a label option (2nd marker)
+      const label = document.createElement("button");
       label.textContent = "Work";
       dialog.append(search, label);
       document.body.append(dialog);

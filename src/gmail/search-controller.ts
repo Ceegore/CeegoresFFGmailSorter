@@ -76,8 +76,25 @@ function listFingerprint(): string {
   return `rows=${String(rows.length)}`;
 }
 
+/**
+ * BUG-046: read status text ONLY from scoped status regions, never from
+ * document.body.textContent (which includes email subjects, snippets, etc.
+ * and causes false positives — e.g. a subject containing "Laden" or "Einladen").
+ */
+function readStatusText(): string {
+  const regions = document.querySelectorAll<HTMLElement>('[role="status"], [role="alert"]');
+  const parts: string[] = [];
+  for (const region of regions) {
+    if (region.closest("#giso-extension-root")) continue;
+    const label = region.getAttribute("aria-label") ?? "";
+    const text = region.textContent || "";
+    parts.push(`${label} ${text}`.trim());
+  }
+  return parts.join(" ");
+}
+
 function isRelatedOnly(): boolean {
-  const text = document.body.textContent || "";
+  const text = readStatusText();
   const relatedVisible =
     matchesAny(text, gmailTextPatterns.de.related) ||
     matchesAny(text, gmailTextPatterns.en.related);
@@ -86,7 +103,7 @@ function isRelatedOnly(): boolean {
 }
 
 function isEmptyState(): boolean {
-  const text = document.body.textContent || "";
+  const text = readStatusText();
   const deEmpty = gmailTextPatterns.de.empty.some((p) => p.test(text));
   const enEmpty = gmailTextPatterns.en.empty.some((p) => p.test(text));
   const hasMailRows = document.querySelector('[role="listitem"], tr[role="row"]') !== null;
@@ -94,7 +111,7 @@ function isEmptyState(): boolean {
 }
 
 function isLoading(): boolean {
-  const text = document.body.textContent || "";
+  const text = readStatusText();
   return (
     matchesAny(text, gmailTextPatterns.de.loading) || matchesAny(text, gmailTextPatterns.en.loading)
   );

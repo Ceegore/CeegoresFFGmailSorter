@@ -35,6 +35,28 @@ export function detectLocale(): GmailDetectionLocale | "unknown" {
   return "unknown";
 }
 
+/**
+ * BUG-038: check whether the inbox nav item is the ACTIVE/current view, not
+ * merely present (it's always visible). Looks for aria-current="page",
+ * aria-selected="true", or a selected/active CSS class on the inbox link.
+ */
+function isInboxNavActive(): boolean {
+  const inboxLinks = document.querySelectorAll<HTMLElement>('a[href*="#inbox"], a[href="#inbox"]');
+  for (const link of inboxLinks) {
+    const current = link.getAttribute("aria-current");
+    const selected = link.getAttribute("aria-selected");
+    const tabIndex = link.getAttribute("tabindex");
+    if (current === "page" || selected === "true") return true;
+    // Gmail also uses tabindex="0" on the active nav item.
+    if (tabIndex === "0") return true;
+  }
+  // Fallback: if the route is exactly #inbox and there's at least one inbox
+  // link present, accept (the route check already proved we're on inbox).
+  const hash = location.hash;
+  if (/^#inbox\/?$/iu.test(hash) && inboxLinks.length > 0) return true;
+  return false;
+}
+
 function collectVisibleNavText(): string[] {
   // Look at aria-labels and link text in the left nav / top bar. Bounded scan.
   const out: string[] = [];
@@ -86,23 +108,41 @@ export function detectCurrentView(): Detection<GmailView> {
     /#search\b/iu.test(hash) || /[?&]q=/iu.test(search) || /[?&]search=/iu.test(search);
   if (isSearchActive) evidence.push("search route/query active");
 
-  const inboxRoute = /#inbox\b/iu.test(hash);
-  const categoryRoute = /#(label|category)\b/iu.test(hash);
-  if (inboxRoute) evidence.push("route #inbox");
-  if (categoryRoute) evidence.push("route category/label");
+  // BUG-038: exact route allowlist. #inbox must be EXACTLY "#inbox" (not
+  // "#inbox/<thread-id>"). #label/... is NOT inbox-like (it's a user label).
+  // Only #inbox and known category routes (#category/primary etc.) are allowed.
+  const inboxRoute = /^#inbox$/iu.test(hash) || /^#inbox\/?$/iu.test(hash);
+  // Category routes: #category/primary, #category/promotions, etc.
+  const categoryRoute = /^#category\//iu.test(hash);
+  // Explicitly reject label, sent, trash, spam, drafts, settings, etc.
+  const rejectedRoute =
+    /^#label\//iu.test(hash) ||
+    /^#sent\b/iu.test(hash) ||
+    /^#trash\b/iu.test(hash) ||
+    /^#spam\b/iu.test(hash) ||
+    /^#drafts\b/iu.test(hash) ||
+    /^#settings\b/iu.test(hash) ||
+    /^#contacts\b/iu.test(hash) ||
+    /^#chat\b/iu.test(hash);
+  if (inboxRoute) evidence.push("route #inbox (exact)");
+  if (categoryRoute) evidence.push("route category (exact)");
+  if (rejectedRoute) evidence.push("route explicitly rejected");
 
-  const navTexts = collectVisibleNavText();
-  const deInbox = navTexts.some((t) => matchesAny(t, gmailTextPatterns.de.inbox));
-  const enInbox = navTexts.some((t) => matchesAny(t, gmailTextPatterns.en.inbox));
-  const inboxHint = deInbox || enInbox;
-  if (inboxHint) evidence.push("inbox/category nav hint");
+  // BUG-038: inboxHint must come from the ACTIVE nav item, not mere link
+  // presence. The inbox link is always visible even when viewing a label.
+  // Check for aria-current="page" or a selected/active state on the inbox link.
+  const inboxHint = isInboxNavActive();
+  if (inboxHint) evidence.push("inbox nav active (aria-current/selected)");
 
   // Search box empty is a weak inbox signal.
   const searchBox = document.querySelector<HTMLInputElement>('input[type="text"][aria-label]');
   const searchEmpty = searchBox ? searchBox.value.trim() === "" : false;
   if (searchEmpty) evidence.push("search box empty");
 
-  const isInboxLike = !isSearchActive && (inboxRoute || categoryRoute) && inboxHint;
+  // BUG-038: only exact inbox/category routes + active nav hint qualify.
+  // A rejected route or a thread-open route (#inbox/xxx) is NOT inbox-like.
+  const isInboxLike =
+    !isSearchActive && !rejectedRoute && (inboxRoute || categoryRoute) && inboxHint;
   const viewClass = isSearchActive
     ? "search"
     : inboxRoute

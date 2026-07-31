@@ -23,6 +23,9 @@ const HIGH_SOURCES: ReadonlySet<SenderIdentity["source"]> = new Set([
 function readAttributeSources(row: HTMLElement): SenderObservation[] {
   const obs: SenderObservation[] = [];
 
+  // BUG-012: high-confidence sources (email, data-hovercard-id, data-email)
+  // are read from the full row — these are sender-specific attributes that
+  // don't appear on subject/attachment elements.
   const emailAttr =
     row.getAttribute("email") ?? row.querySelector("[email]")?.getAttribute("email");
   if (emailAttr) obs.push(observe("email-attribute", emailAttr));
@@ -36,15 +39,28 @@ function readAttributeSources(row: HTMLElement): SenderObservation[] {
     row.getAttribute("data-email") ?? row.querySelector("[data-email]")?.getAttribute("data-email");
   if (dataEmail) obs.push(observe("data-email", dataEmail));
 
-  const titled = row.querySelector<HTMLElement>("[title]");
-  const title = titled?.getAttribute("title");
-  if (title) obs.push(observe("title", title));
-
-  const labelled = row.querySelector<HTMLElement>("[aria-label]");
-  const aria = labelled?.getAttribute("aria-label");
-  if (aria) obs.push(observe("aria-label", aria));
+  // BUG-012: title and aria-label are LOWER-confidence sources. Reading the
+  // first arbitrary [title] or [aria-label] descendant can pick up the subject,
+  // an attachment name, or a date. Instead, scope these to the "sender cell" —
+  // the element that carries one of the high-confidence email attributes.
+  const senderCell = findSenderCell(row);
+  if (senderCell) {
+    const title = senderCell.getAttribute("title");
+    if (title) obs.push(observe("title", title));
+    const aria = senderCell.getAttribute("aria-label");
+    if (aria) obs.push(observe("aria-label", aria));
+  }
 
   return obs;
+}
+
+/**
+ * BUG-012: find the "sender cell" — the element that carries a sender-specific
+ * attribute. Title/aria-label are only read from THIS element, preventing
+ * subject/snippet/attachment text from masquerading as sender info.
+ */
+function findSenderCell(row: HTMLElement): HTMLElement | null {
+  return row.querySelector<HTMLElement>("[email], [data-email], [data-hovercard-id]") ?? null;
 }
 
 function observe(source: SenderIdentity["source"], raw: string): SenderObservation {
@@ -79,18 +95,18 @@ export function extractSenderFromRow(row: HTMLElement): SenderIdentity {
 
   if (uniqueEmails.size > 1) {
     diagnostics.push("GISO-SENDER-CONFLICT-001");
-    return unresolved(row, diagnostics);
+    return unresolved(diagnostics);
   }
 
   if (uniqueEmails.size === 1) {
     const [email] = [...uniqueEmails];
-    if (!email) return unresolved(row, diagnostics);
+    if (!email) return unresolved(diagnostics);
     // Pick the highest-confidence observation for this email.
     const sorted = [...validObs]
       .filter((o) => o.email === email)
       .sort((a, b) => rankConfidence(b.confidence) - rankConfidence(a.confidence));
     const best = sorted[0];
-    if (!best) return unresolved(row, diagnostics);
+    if (!best) return unresolved(diagnostics);
     const displayName =
       best.displayName ??
       validObs.find((o) => o.email === email && o.displayName)?.displayName ??
@@ -105,30 +121,18 @@ export function extractSenderFromRow(row: HTMLElement): SenderIdentity {
     };
   }
 
-  // No valid email from attributes. Visible-text-only is "low" and must never
-  // trigger a global action (enforced by grouping).
-  const visible = (row.textContent || "").trim();
-  if (visible) {
-    diagnostics.push("visible-text-only");
-    return {
-      normalizedEmail: null,
-      rawEmail: null,
-      displayName: visible.slice(0, 80) || null,
-      source: "visible-text",
-      confidence: "low",
-      diagnostics,
-    };
-  }
-  return unresolved(row, diagnostics);
+  // BUG-041: never store row.textContent — it can contain subject, snippet,
+  // date, and label text. Unresolved rows get a safe generic label only.
+  return unresolved(diagnostics);
 }
 
-function unresolved(row: HTMLElement, diagnostics: string[]): SenderIdentity {
+/** BUG-041: unresolved identity uses a generic label, never row text. */
+function unresolved(diagnostics: string[]): SenderIdentity {
   diagnostics.push("GISO-SENDER-UNRESOLVED-001");
-  const text = (row.textContent || "").trim();
   return {
     normalizedEmail: null,
     rawEmail: null,
-    displayName: text.slice(0, 80) || null,
+    displayName: null,
     source: "none",
     confidence: "unresolved",
     diagnostics,

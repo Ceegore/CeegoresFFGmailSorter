@@ -42,20 +42,31 @@ describe("extractSenderFromRow", () => {
     expect(s.source).toBe("data-email");
   });
 
-  it("title with email => medium confidence", () => {
-    const r = row({}, span({ title: "Alice <alice@example.com>" }));
+  it("title on the sender cell => medium confidence", () => {
+    // BUG-012: title must be on the sender cell (element with email attr), not
+    // an arbitrary descendant.
+    const r = row({}, span({ email: "alice@example.com", title: "Alice <alice@example.com>" }));
     const s = extractSenderFromRow(r);
     expect(s.normalizedEmail).toBe("alice@example.com");
     expect(["medium", "high"]).toContain(s.confidence);
-    expect(s.source).toBe("title");
   });
 
-  it("aria-label with email => medium confidence", () => {
-    const r = row({}, span({ "aria-label": "bob@example.com" }));
+  it("aria-label on the sender cell => medium confidence", () => {
+    const r = row({}, span({ email: "bob@example.com", "aria-label": "bob@example.com" }));
     const s = extractSenderFromRow(r);
     expect(s.normalizedEmail).toBe("bob@example.com");
     expect(["medium", "high"]).toContain(s.confidence);
-    expect(s.source).toBe("aria-label");
+  });
+
+  it("BUG-012: title on a non-sender element is ignored", () => {
+    // The title is on a subject-like span, NOT the sender cell.
+    const r = row({}, span({ email: "real@example.com" }));
+    const subjectSpan = document.createElement("span");
+    subjectSpan.setAttribute("title", "fake@other.com");
+    r.append(subjectSpan);
+    const s = extractSenderFromRow(r);
+    expect(s.normalizedEmail).toBe("real@example.com");
+    expect(s.source).not.toBe("title");
   });
 
   it("conflicting emails from two sources => unresolved conflict", () => {
@@ -76,12 +87,13 @@ describe("extractSenderFromRow", () => {
     expect(s.confidence).toBe("high");
   });
 
-  it("no email, only visible text => low confidence, never global-actionable", () => {
+  it("BUG-041: no email, only visible text => unresolved, no textContent stored", () => {
     const r = row({}, span({}, "Just A Name"));
     const s = extractSenderFromRow(r);
     expect(s.normalizedEmail).toBeNull();
-    expect(s.confidence).toBe("low");
-    expect(s.source).toBe("visible-text");
+    expect(s.confidence).toBe("unresolved");
+    expect(s.displayName).toBeNull(); // BUG-041: never store row text
+    expect(s.diagnostics).toContain("GISO-SENDER-UNRESOLVED-001");
   });
 
   it("empty row => unresolved", () => {

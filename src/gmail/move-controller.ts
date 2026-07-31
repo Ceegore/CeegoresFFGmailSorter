@@ -74,39 +74,57 @@ async function clickAndDetectMenu(
   }
   // Re-resolve before click (§51.6).
   if (!button.isConnected || !isInteractable(button)) return null;
+  // BUG-014: snapshot menus that exist BEFORE the click, so we only accept a
+  // newly-opened menu (not a stale/pre-existing dialog).
+  const preExistingMenus = new Set<HTMLElement>(
+    document.querySelectorAll<HTMLElement>('[role="menu"], [role="dialog"], [role="listbox"]'),
+  );
   button.click();
-  // Wait for a menu/dialog with >=2 of the §55.2 markers.
   const started = performance.now();
   while (performance.now() - started < timeoutMs) {
     assertNotAborted(signal);
-    const menu = findMoveMenu();
+    const menu = findMoveMenu(preExistingMenus);
     if (menu) return menu;
     await delay(50, signal);
   }
   return null;
 }
 
-/** Detect an opened move menu/dialog (§55.2). */
-export function findMoveMenu(): HTMLElement | null {
+/**
+ * BUG-014: detect an opened move menu/dialog. A generic dialog with a text
+ * field and a button is NOT sufficient — the menu must ALSO contain move-
+ * specific text (DE/EN) or a "create new label" option, and it must not have
+ * existed before the move button was clicked (newly-opened).
+ */
+export function findMoveMenu(existingMenus?: Set<HTMLElement>): HTMLElement | null {
   const menus = document.querySelectorAll<HTMLElement>(
     '[role="menu"], [role="dialog"], [role="listbox"]',
   );
   for (const menu of menus) {
     if (menu.closest("#giso-extension-root")) continue;
     if (!isInteractable(menu)) continue;
-    let markers = 0;
-    const text = visibleText(menu);
-    if (matchesAny(text, gmailTextPatterns.de.move) || matchesAny(text, gmailTextPatterns.en.move))
-      markers++;
-    if (
-      matchesAny(text, gmailTextPatterns.de.createNew) ||
-      matchesAny(text, gmailTextPatterns.en.createNew)
-    )
-      markers++;
-    if (menu.querySelector('input[type="text"], input[type="search"], [role="searchbox"]'))
-      markers++;
-    if (menu.querySelector('[role="option"], [role="menuitem"], li, button')) markers++;
-    if (markers >= 2) return menu;
+    // BUG-014: skip menus that existed before the click (not newly opened).
+    if (existingMenus?.has(menu)) continue;
+    // BUG-014: move-specific text is now REQUIRED. Test aria-label and
+    // textContent separately (concatenation breaks anchored patterns).
+    const ariaLabel = menu.getAttribute("aria-label") ?? "";
+    const textContent = menu.textContent || "";
+    const hasMoveText =
+      matchesAny(ariaLabel, gmailTextPatterns.de.move) ||
+      matchesAny(ariaLabel, gmailTextPatterns.en.move) ||
+      matchesAny(textContent, gmailTextPatterns.de.move) ||
+      matchesAny(textContent, gmailTextPatterns.en.move);
+    const hasCreateNew =
+      matchesAny(ariaLabel, gmailTextPatterns.de.createNew) ||
+      matchesAny(ariaLabel, gmailTextPatterns.en.createNew) ||
+      matchesAny(textContent, gmailTextPatterns.de.createNew) ||
+      matchesAny(textContent, gmailTextPatterns.en.createNew);
+    if (!hasMoveText && !hasCreateNew) continue;
+    // Additional structural markers (label options or search field).
+    const hasLabelOptions =
+      menu.querySelector('[role="option"], [role="menuitem"], li, button') !== null;
+    const hasSearch = menu.querySelector('input[type="text"], input[type="search"]') !== null;
+    if (hasLabelOptions || hasSearch) return menu;
   }
   return null;
 }
