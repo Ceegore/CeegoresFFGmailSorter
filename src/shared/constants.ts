@@ -1,3 +1,17 @@
 export const GMAIL_HOME_URL = "https://mail.google.com/" as const;
 export const OVERLAY_ROOT_ID = "giso-extension-root" as const;
 export const BRAND_CREDIT = "made by Ceegore" as const;
+
+/**
+ * SAFE MODE (Phase A of the bug-fix plan, report §11).
+ *
+ * While true, the add-on performs ZERO automatic Gmail clicks: after the
+ * verified search it stops and surfaces the query for the user to perform
+ * selection and move manually. This neutralizes every "wrong mass action"
+ * risk identified in the audit (BUG-002/006/007/014/035/037/043) until
+ * Phases B–D close the underlying click-safety defects.
+ *
+ * Flipping this back to false re-enables the automated selection/move path —
+ * do so only after those phases pass their acceptance tests.
+ */
+export const SAFE_MODE = true as const;

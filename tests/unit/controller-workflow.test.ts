@@ -85,16 +85,18 @@ describe("controller workflow", () => {
     c.dispose();
   });
 
-  it("selectGroup then confirmSearch drives the full workflow to COMPLETED with group done", async () => {
+  it("selectGroup then confirmSearch stops at SEARCH_READY_MANUAL in safe mode (no auto clicks)", async () => {
     const store = createStore(initialState, reduceAppState);
     const c = createAppController(store);
     await c.analyze();
     c.selectGroup("sender:a@example.com");
     expect(store.getState().workflow).toBe("CONFIRM_SEARCH");
     await c.confirmSearch();
-    // With all stubs succeeding + auto-confirm, the workflow reaches COMPLETED.
-    expect(store.getState().workflow).toBe("COMPLETED");
-    expect(store.getState().analysis?.groups[0]?.status).toBe("done");
+    // SAFE_MODE: the workflow stops after the verified search; no auto selection/move.
+    expect(store.getState().workflow).toBe("SEARCH_READY_MANUAL");
+    expect(store.getState().expectedQuery).toContain('in:inbox "from:a@example.com"');
+    // The group is in-progress (set before search); the user completes manually.
+    expect(store.getState().analysis?.groups[0]?.status).toBe("in-progress");
     c.dispose();
   });
 
@@ -114,29 +116,29 @@ describe("controller workflow", () => {
     c.dispose();
   });
 
-  it("returnToResults from COMPLETED resets to RESULTS_READY", async () => {
+  it("returnToResults from SEARCH_READY_MANUAL resets to RESULTS_READY", async () => {
     const store = createStore(initialState, reduceAppState);
     const c = createAppController(store);
     await c.analyze();
     c.selectGroup("sender:a@example.com");
     await c.confirmSearch();
-    expect(store.getState().workflow).toBe("COMPLETED");
+    expect(store.getState().workflow).toBe("SEARCH_READY_MANUAL");
     c.returnToResults();
     expect(store.getState().workflow).toBe("RESULTS_READY");
     c.dispose();
   });
 
-  it("confirmCompletion marks the active group done", async () => {
+  it("confirmCompletion in safe mode marks the active group done and returns to results", async () => {
     const store = createStore(initialState, reduceAppState);
     const c = createAppController(store);
     await c.analyze();
     c.selectGroup("sender:a@example.com");
     await c.confirmSearch();
-    // Force back to VERIFYING_COMPLETION to test confirmCompletion.
-    store.dispatch({ type: "COMPLETION_CONFIRMED" });
-    c.dispose();
-    // Group should be done from the auto-confirm path already.
+    expect(store.getState().workflow).toBe("SEARCH_READY_MANUAL");
+    c.confirmCompletion();
+    expect(store.getState().workflow).toBe("RESULTS_READY");
     expect(store.getState().analysis?.groups[0]?.status).toBe("done");
+    c.dispose();
   });
 
   it("setFilter/setSort/ignoreGroup dispatch correctly", () => {

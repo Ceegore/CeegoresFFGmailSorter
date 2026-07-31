@@ -113,6 +113,24 @@ where the spec left room for choice. The default rule is:
   the defensive branches naturally, the thresholds may be raised back toward
   the spec's targets without further decision.
 
+## D-009 — Phase A safe mode (audit remediation, report §11)
+
+- **Context:** the deep audit (`Vertiefte Bug-, Sicherheits- und QA-Prüfung`)
+  found 73 defects (14 critical) and ruled the current revision NO-GO. The
+  report's mandated first remediation step is Phase A: disable all automatic
+  Gmail actions until the click-safety bugs are fixed.
+- **Decision:** introduced `SAFE_MODE` (`src/shared/constants.ts`, currently
+  `true`). While on, the workflow performs ZERO automatic Gmail clicks: after
+  the verified search it transitions to a new `SEARCH_READY_MANUAL` state and
+  surfaces the query (with a copy button + manual instructions) for the user to
+  perform selection and move themselves. The user marks the group done manually.
+  This neutralizes every "wrong mass action" risk (BUG-002/006/007/014/035/
+  037/043) immediately.
+- **Reversibility:** `SAFE_MODE` flips back to `false` only after Phases B–D
+  close the underlying click-safety defects and their acceptance tests pass.
+- **Test coverage:** `tests/unit/safe-mode.test.ts` proves the selection, move,
+  and completion controllers are never invoked while `SAFE_MODE` is on.
+
 ## Open questions for the human reviewer
 
 None at this time. Any future deviation will be appended here before the

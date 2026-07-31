@@ -11,6 +11,7 @@ export type AppEvent =
   | { type: "CONFIRM_SEARCH" }
   | { type: "SEARCH_SUBMITTED"; query: string }
   | { type: "SEARCH_READY" }
+  | { type: "SEARCH_READY_MANUAL" }
   | { type: "PAGE_SELECTED" }
   | { type: "ALL_SELECTED" }
   | { type: "MANUAL_SELECT_REQUIRED" }

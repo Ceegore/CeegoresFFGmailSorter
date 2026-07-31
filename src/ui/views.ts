@@ -65,6 +65,9 @@ export function* renderView(
     case "CONFIRM_SEARCH":
       yield* resultsView(state, controller);
       return;
+    case "SEARCH_READY_MANUAL":
+      yield* manualWorkflowView(state, controller);
+      return;
     case "SETTING_SEARCH":
     case "WAITING_SEARCH_RESULTS":
     case "SELECTING_PAGE":
@@ -434,4 +437,80 @@ function* errorView(
 function activeGroup(state: AppState): SenderGroup | undefined {
   if (!state.analysis || !state.activeGroupId) return undefined;
   return state.analysis.groups.find((g) => g.id === state.activeGroupId);
+}
+
+/**
+ * Phase A safe-mode view. The verified search query is shown and copyable, and
+ * the user is instructed to perform selection + move manually in Gmail. The
+ * add-on performs NO automatic clicks in this state. The user marks the group
+ * done once they have completed the move themselves.
+ */
+function* manualWorkflowView(
+  state: AppState,
+  controller: AppController,
+): Generator<HTMLElement, void, unknown> {
+  const group = activeGroup(state);
+  if (group) {
+    const name = document.createElement("p");
+    name.className = "giso-status";
+    name.textContent = `${group.primaryDisplayName} · ${group.normalizedEmail}`;
+    yield name;
+  }
+  const title = document.createElement("p");
+  title.className = "giso-status";
+  title.textContent = de.startSearch;
+  yield title;
+
+  if (state.expectedQuery) {
+    const query = document.createElement("p");
+    query.className = "giso-query";
+    query.dataset["testid"] = "giso-query";
+    query.textContent = state.expectedQuery;
+    yield query;
+
+    const copyBtn = button(
+      "giso-copy-query",
+      de.copyQuery,
+      () => {
+        void copyToClipboard(state.expectedQuery ?? "");
+      },
+      "link",
+    );
+    yield copyBtn;
+  }
+
+  const help = document.createElement("p");
+  help.className = "giso-hint";
+  help.textContent = de.manualWorkflowHint;
+  yield help;
+
+  const warning = document.createElement("p");
+  warning.className = "giso-hint";
+  warning.textContent = de.liveActionWarning;
+  yield warning;
+
+  const actions = document.createElement("div");
+  actions.className = "giso-actions";
+  actions.append(
+    button(
+      "giso-mark-done",
+      de.markDone,
+      () => {
+        controller.confirmCompletion();
+      },
+      "primary",
+    ),
+    button("giso-back", de.back, () => {
+      controller.returnToResults();
+    }),
+  );
+  yield actions;
+}
+
+async function copyToClipboard(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    /* clipboard may be unavailable; the query text remains visible to copy manually */
+  }
 }

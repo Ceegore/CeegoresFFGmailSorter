@@ -31,6 +31,8 @@ export const de = {
   searchQuery: "Suchanfrage",
   startSearch: "Suche starten",
   back: "Zurück",
+  manualWorkflowHint:
+    "Die Suche wurde in Gmail gestartet. Wähle die Treffer, öffne das „Verschieben nach“-Menü und wähle das Ziel selbst. Das Add-on führt in diesem Modus keine automatischen Klicks aus.",
   stepSearch: "Suche öffnen",
   stepSelectPage: "Ergebnisse auswählen",
   stepSelectAll: "Alle Treffer auswählen",

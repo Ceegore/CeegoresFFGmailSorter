@@ -190,6 +190,11 @@ export function reduceAppState(state: AppState, event: AppEvent): AppState {
       return state.workflow === "WAITING_SEARCH_RESULTS"
         ? { ...state, workflow: "SELECTING_PAGE" }
         : illegal(state, event);
+    case "SEARCH_READY_MANUAL":
+      // Phase A safe mode: after a verified search, stop for manual operation.
+      return state.workflow === "WAITING_SEARCH_RESULTS"
+        ? { ...state, workflow: "SEARCH_READY_MANUAL" }
+        : illegal(state, event);
     case "PAGE_SELECTED":
       return state.workflow === "SELECTING_PAGE"
         ? { ...state, workflow: "WAITING_SELECT_ALL" }
@@ -227,7 +232,7 @@ export function reduceAppState(state: AppState, event: AppEvent): AppState {
         ? { ...state, workflow: "CANCELLED", error: null }
         : illegal(state, event);
     case "RETURN_TO_RESULTS":
-      return ["COMPLETED", "CANCELLED", "ERROR"].includes(state.workflow)
+      return ["COMPLETED", "CANCELLED", "ERROR", "SEARCH_READY_MANUAL"].includes(state.workflow)
         ? state.analysis
           ? {
               ...state,

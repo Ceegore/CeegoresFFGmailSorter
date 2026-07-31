@@ -13,6 +13,7 @@ import { buildInboxSenderQuery, submitAndWaitUntilReady } from "@/gmail/search-c
 import { selectCurrentPage, trySelectAllMatches } from "@/gmail/selection-controller";
 import { openMoveMenu } from "@/gmail/move-controller";
 import { isAutoConfirmed, readCompletionEvidence } from "@/gmail/completion-detector";
+import { SAFE_MODE } from "@/shared/constants";
 
 export interface AppController {
   readonly analyze: () => Promise<void>;
@@ -137,9 +138,20 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
           });
           return;
         }
-        dispatch({ type: "SEARCH_READY" });
+        // SAFE_MODE is a deliberate compile-time constant gate (Phase A). The
+        // always-truthy condition is intentional and flips back once click-safety
+        // bugs are closed.
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        if (SAFE_MODE) {
+          // Phase A safety cut: do NOT auto-select / auto-move / auto-complete.
+          // Surface the query and let the user act manually in Gmail.
+          dispatch({ type: "SEARCH_READY_MANUAL" });
+          return;
+        }
 
-        // Phase 06: select current page, then attempt select-all.
+        // Automated path (re-enabled only when SAFE_MODE === false and
+        // Phases B–D have closed the click-safety defects).
+        dispatch({ type: "SEARCH_READY" });
         await selectCurrentPage(signal);
         dispatch({ type: "PAGE_SELECTED" });
         const outcome = await trySelectAllMatches(signal);
@@ -165,7 +177,14 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
       });
     },
     confirmCompletion(): void {
-      const id = store.getState().activeGroupId;
+      const { activeGroupId, workflow } = store.getState();
+      if (workflow === "SEARCH_READY_MANUAL") {
+        // Safe-mode manual completion: mark the group done and return to results.
+        if (activeGroupId) dispatch({ type: "MARK_GROUP_DONE", groupId: activeGroupId });
+        dispatch({ type: "RETURN_TO_RESULTS" });
+        return;
+      }
+      const id = activeGroupId;
       dispatch({ type: "COMPLETION_CONFIRMED" });
       if (id) dispatch({ type: "MARK_GROUP_DONE", groupId: id });
     },
