@@ -271,7 +271,9 @@ export function reduceAppState(state: AppState, event: AppEvent): AppState {
         overlayVisible: state.overlayVisible,
       };
     case "RETURN_TO_RESULTS":
-      return ["COMPLETED", "CANCELLED", "ERROR", "SEARCH_READY_MANUAL"].includes(state.workflow)
+      return ["COMPLETED", "CANCELLED", "ERROR", "SEARCH_READY_MANUAL", "CONFIRM_SEARCH"].includes(
+        state.workflow,
+      )
         ? state.analysis
           ? {
               ...state,
