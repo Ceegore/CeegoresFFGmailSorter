@@ -24,7 +24,9 @@ export type AppEvent =
   | { type: "MARK_GROUP_READY"; groupId: string }
   | { type: "MARK_GROUP_DONE"; groupId: string }
   | { type: "MARK_GROUP_ERROR"; groupId: string; errorCode: string }
+  | { type: "WORKFLOW_FAILED"; groupId: string; error: AppError }
   | { type: "FAIL"; error: AppError }
+  | { type: "ROUTE_CONTEXT_INVALIDATED" }
   | { type: "CANCELLED" }
   | { type: "RETURN_TO_RESULTS" }
   | { type: "SET_FILTER"; value: string }

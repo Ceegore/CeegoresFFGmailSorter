@@ -5,6 +5,7 @@
 import type { AppController } from "@/app/controller";
 import { de } from "@/i18n/de";
 import { deriveSteps } from "@/app/state-machine";
+import { buildInboxSenderQuery } from "@/gmail/search-controller";
 import type { AppState, SenderGroup } from "@/shared/types";
 
 function button(
@@ -62,8 +63,10 @@ export function* renderView(
       yield* analyzingView(state);
       return;
     case "RESULTS_READY":
-    case "CONFIRM_SEARCH":
       yield* resultsView(state, controller);
+      return;
+    case "CONFIRM_SEARCH":
+      yield* confirmSearchView(state, controller);
       return;
     case "SEARCH_READY_MANUAL":
       yield* manualWorkflowView(state, controller);
@@ -445,6 +448,70 @@ function activeGroup(state: AppState): SenderGroup | undefined {
  * add-on performs NO automatic clicks in this state. The user marks the group
  * done once they have completed the move themselves.
  */
+/**
+ * BUG-001: dedicated CONFIRM_SEARCH view. Shows the sender, address, visible
+ * entry count, the exact Gmail query, and the confirm-body hint. The only
+ * primary action is "Suche starten" (confirmSearch); "Zurück" returns to
+ * RESULTS_READY. No other group actions are visible or actionable here.
+ */
+function* confirmSearchView(
+  state: AppState,
+  controller: AppController,
+): Generator<HTMLElement, void, unknown> {
+  const group = activeGroup(state);
+  if (!group) {
+    yield statusLine(de.ready);
+    return;
+  }
+  const title = document.createElement("p");
+  title.className = "giso-status";
+  title.textContent = de.confirmTitle;
+  yield title;
+
+  const body = document.createElement("p");
+  body.className = "giso-hint";
+  body.textContent = de.confirmBody;
+  yield body;
+
+  const fields = document.createElement("div");
+  fields.className = "giso-meter";
+  const sender = document.createElement("div");
+  sender.textContent = `${de.sender}: ${group.primaryDisplayName}`;
+  const address = document.createElement("div");
+  address.textContent = `${de.address}: ${group.normalizedEmail}`;
+  const matches = document.createElement("div");
+  matches.textContent = `${de.visibleMatches}: ${String(group.visibleEntryCount)}`;
+  fields.append(sender, address, matches);
+  yield fields;
+
+  const queryLabel = document.createElement("div");
+  queryLabel.className = "giso-meter";
+  queryLabel.textContent = `${de.searchQuery}:`;
+  yield queryLabel;
+  const query = document.createElement("p");
+  query.className = "giso-query";
+  query.dataset["testid"] = "giso-confirm-query";
+  query.textContent = buildInboxSenderQuery(group.normalizedEmail);
+  yield query;
+
+  const actions = document.createElement("div");
+  actions.className = "giso-actions";
+  actions.append(
+    button(
+      "giso-confirm-search",
+      de.startSearch,
+      () => {
+        void controller.confirmSearch();
+      },
+      "primary",
+    ),
+    button("giso-back", de.back, () => {
+      controller.returnToResults();
+    }),
+  );
+  yield actions;
+}
+
 function* manualWorkflowView(
   state: AppState,
   controller: AppController,

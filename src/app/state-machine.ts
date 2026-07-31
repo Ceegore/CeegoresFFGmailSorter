@@ -1,4 +1,5 @@
 import { buildInboxSenderQuery } from "@/gmail/search-controller";
+import { initialState } from "@/app/initial-state";
 import type {
   AppState,
   DiagnosticEvent,
@@ -109,6 +110,14 @@ function updateGroupEvent(
     }
   >,
 ): AppState {
+  // BUG-051: group-status events are bound to workflow + active group.
+  // IGNORE_GROUP is only legal from RESULTS_READY; the workflow-bound status
+  // events (IN_PROGRESS/READY/DONE/ERROR) only apply to the active group.
+  if (event.type === "IGNORE_GROUP") {
+    if (state.workflow !== "RESULTS_READY") return illegal(state, event);
+  } else {
+    if (event.groupId !== state.activeGroupId) return illegal(state, event);
+  }
   const next = replaceGroup(state, event.groupId, (group) => {
     switch (event.type) {
       case "IGNORE_GROUP":
@@ -153,6 +162,9 @@ export function reduceAppState(state: AppState, event: AppEvent): AppState {
       return ["IDLE", "RESULTS_READY"].includes(state.workflow)
         ? {
             ...state,
+            // BUG-040: clear the previous analysis immediately so a failed
+            // re-analysis cannot resurface stale groups from another route/account.
+            analysis: null,
             workflow: "ANALYZING",
             error: null,
             activeGroupId: null,
@@ -227,10 +239,37 @@ export function reduceAppState(state: AppState, event: AppEvent): AppState {
       return state.workflow === "ANALYZING" || isCriticalWorkflow(state.workflow)
         ? { ...state, workflow: "ERROR", error: event.error }
         : illegal(state, event);
+    case "WORKFLOW_FAILED": {
+      // BUG-008: atomically mark the active group as error AND fail the workflow,
+      // so a group is never left stuck as in-progress after an error.
+      if (state.workflow === "ANALYZING" || isCriticalWorkflow(state.workflow)) {
+        if (!state.analysis || event.groupId !== state.activeGroupId) {
+          return { ...state, workflow: "ERROR", error: event.error };
+        }
+        const groups = state.analysis.groups.map((g) =>
+          g.id === event.groupId && g.status === "in-progress"
+            ? { ...g, status: "error" as const, lastErrorCode: event.error.code }
+            : g,
+        );
+        return {
+          ...state,
+          workflow: "ERROR",
+          error: event.error,
+          analysis: { ...state.analysis, groups },
+        };
+      }
+      return illegal(state, event);
+    }
     case "CANCELLED":
       return state.workflow === "ANALYZING" || isCriticalWorkflow(state.workflow)
         ? { ...state, workflow: "CANCELLED", error: null }
         : illegal(state, event);
+    case "ROUTE_CONTEXT_INVALIDATED":
+      // BUG-004: atomically discard all session state on a route/account change.
+      return {
+        ...initialState,
+        overlayVisible: state.overlayVisible,
+      };
     case "RETURN_TO_RESULTS":
       return ["COMPLETED", "CANCELLED", "ERROR", "SEARCH_READY_MANUAL"].includes(state.workflow)
         ? state.analysis

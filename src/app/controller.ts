@@ -28,6 +28,8 @@ export interface AppController {
   readonly setFilter: (value: string) => void;
   readonly setSort: (value: AppState["sort"]) => void;
   readonly ignoreGroup: (groupId: string) => void;
+  /** Invalidate the session on an unexpected route/account change (BUG-004/035). */
+  readonly invalidateOnRouteChange: () => void;
   readonly handleBackgroundMessage: (
     type: "TOGGLE_OVERLAY" | "SHOW_OVERLAY",
   ) => ContentResponse | Promise<ContentResponse>;
@@ -49,9 +51,12 @@ function toTechnicalMessage(error: unknown): string {
 
 export function createAppController(store: Store<AppState, AppEvent>): AppController {
   let abortController: AbortController | null = null;
+  // BUG-035: while the workflow is driving its own search navigation, route
+  // changes are expected and must NOT invalidate the session.
+  let expectedRouteTransition = false;
 
-  const dispatch = (event: AppEvent): void => {
-    store.dispatch(event);
+  const dispatch = (event: AppEvent): { accepted: boolean } => {
+    return store.dispatch(event);
   };
   const restoreActiveGroupToReady = (): void => {
     const { activeGroupId, analysis } = store.getState();
@@ -99,7 +104,8 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
 
   return {
     async analyze(): Promise<void> {
-      dispatch({ type: "START_ANALYSIS" });
+      // BUG-010: only run the effect if the transition was actually accepted.
+      if (!dispatch({ type: "START_ANALYSIS" }).accepted) return;
       await safeRun(async (signal) => {
         const result = await analyzeCurrentInbox(signal);
         dispatch({ type: "ANALYSIS_SUCCEEDED", result });
@@ -109,7 +115,7 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
       dispatch({ type: "SELECT_GROUP", groupId });
     },
     async confirmSearch(): Promise<void> {
-      dispatch({ type: "CONFIRM_SEARCH" });
+      if (!dispatch({ type: "CONFIRM_SEARCH" }).accepted) return;
       await safeRun(async (signal) => {
         const state = store.getState();
         const group = state.analysis?.groups.find((g) => g.id === state.activeGroupId);
@@ -124,7 +130,14 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
         dispatch({ type: "MARK_GROUP_IN_PROGRESS", groupId: group.id });
         const query = buildInboxSenderQuery(group.normalizedEmail);
         dispatch({ type: "SEARCH_SUBMITTED", query });
-        const evidence = await submitAndWaitUntilReady(query, signal);
+        // BUG-035: the search will navigate Gmail's route; that is expected.
+        expectedRouteTransition = true;
+        let evidence: Awaited<ReturnType<typeof submitAndWaitUntilReady>>;
+        try {
+          evidence = await submitAndWaitUntilReady(query, signal);
+        } finally {
+          expectedRouteTransition = false;
+        }
         // Empty results end the workflow for this group with an error.
         if (evidence.emptyStateDetected && !evidence.mailListDetected) {
           dispatch({
@@ -194,6 +207,11 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
       // Per A.11: abort without completion restores the active group to ready.
       restoreActiveGroupToReady();
       dispatch({ type: "CANCELLED" });
+      // BUG-050: CANCELLED is not a persistent usable state — immediately move
+      // to a safe terminal (results if analysis exists, else IDLE via RETURN).
+      if (store.getState().analysis) {
+        dispatch({ type: "RETURN_TO_RESULTS" });
+      }
     },
     resetSession(): void {
       abortController?.abort();
@@ -205,6 +223,13 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
       abortController?.abort();
       abortController = null;
       dispatch({ type: "RETURN_TO_RESULTS" });
+    },
+    invalidateOnRouteChange(): void {
+      // BUG-004/035: ignore route changes the workflow itself is driving.
+      if (expectedRouteTransition) return;
+      abortController?.abort();
+      abortController = null;
+      dispatch({ type: "ROUTE_CONTEXT_INVALIDATED" });
     },
     setFilter(value: string): void {
       dispatch({ type: "SET_FILTER", value });

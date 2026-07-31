@@ -104,6 +104,7 @@ describe("state machine", () => {
     const withResults = {
       ...initialState,
       workflow: "RESULTS_READY" as const,
+      activeGroupId: "sender:a@example.com",
       analysis: analysis([group({ status: "in-progress" })]),
     };
     const s = reduceAppState(withResults, {
@@ -116,6 +117,7 @@ describe("state machine", () => {
     const withResults = {
       ...initialState,
       workflow: "RESULTS_READY" as const,
+      activeGroupId: "sender:a@example.com",
       analysis: analysis([group({ status: "ready" })]),
     };
     let s = reduceAppState(withResults, {

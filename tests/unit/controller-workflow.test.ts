@@ -207,9 +207,10 @@ describe("controller workflow", () => {
     store.dispatch({ type: "CONFIRM_SEARCH" });
     store.dispatch({ type: "MARK_GROUP_IN_PROGRESS", groupId: "sender:a@example.com" });
     store.dispatch({ type: "SEARCH_SUBMITTED", query: 'in:inbox "from:a@example.com"' });
-    // Now in WAITING_SEARCH_RESULTS (critical). cancel -> CANCELLED, group ready.
+    // Now in WAITING_SEARCH_RESULTS (critical). cancel aborts and (BUG-050)
+    // auto-returns to RESULTS_READY since analysis exists; group restored to ready.
     c.cancel();
-    expect(store.getState().workflow).toBe("CANCELLED");
+    expect(store.getState().workflow).toBe("RESULTS_READY");
     expect(store.getState().analysis?.groups[0]?.status).toBe("ready");
     c.dispose();
   });

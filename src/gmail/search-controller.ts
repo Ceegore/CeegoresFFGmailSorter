@@ -150,20 +150,27 @@ export async function submitAndWaitUntilReady(
       stabilityMs,
     );
   } catch (error) {
-    if ((error instanceof DOMException && error.name === "AbortError") || isTimeout(error)) {
-      // One controlled retry per §15.2.
-      const btn = findSearchSubmitButton();
-      btn?.click();
-      return await waitForEvidence(
-        query,
-        baselineRoute,
-        baselineList,
-        signal,
-        timeoutMs,
-        stabilityMs,
-      );
+    // BUG-036: an abort (user cancel / route change) must NEVER trigger a
+    // retry click. Only a genuine timeout may retry, and only after re-checking
+    // that the signal is still alive.
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw error;
     }
-    throw error;
+    if (!isTimeout(error)) {
+      throw error;
+    }
+    assertNotAborted(signal);
+    // One controlled timeout-retry per §15.2.
+    const btn = findSearchSubmitButton();
+    btn?.click();
+    return await waitForEvidence(
+      query,
+      baselineRoute,
+      baselineList,
+      signal,
+      timeoutMs,
+      stabilityMs,
+    );
   }
 }
 

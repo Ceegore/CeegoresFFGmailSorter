@@ -17,7 +17,16 @@ export function bootstrap(): void {
 
   try {
     const { host, shadow } = ensureOverlayHost();
-    const store = createStore(initialState, reduceAppState);
+    const store = createStore(initialState, reduceAppState, (s) => [
+      s.workflow,
+      s.activeGroupId,
+      s.error?.code ?? "",
+      s.analysis !== null,
+      s.overlayVisible,
+      s.expectedQuery ?? "",
+      s.filter,
+      s.sort,
+    ]);
     const controller = createAppController(store);
     const unsubscribe = store.subscribe((state) => {
       renderApp(shadow, state, controller);
@@ -38,8 +47,10 @@ export function bootstrap(): void {
     renderApp(shadow, store.getState(), controller);
 
     const routeObserver = observeRoutes(() => {
-      controller.cancel("route-changed");
-      controller.resetSession();
+      // BUG-035: a route change invalidates the session atomically. The
+      // controller's own search is handled inside safeRun (it sets an expected
+      // transition flag); only UNEXPECTED changes reach here and reset to IDLE.
+      controller.invalidateOnRouteChange();
     });
 
     // Firefox supports listeners that return a Promise resolving to the
