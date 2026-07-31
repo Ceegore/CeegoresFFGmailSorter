@@ -23,8 +23,9 @@ const ALL_DELTA = 20;
 
 /** Find the toolbar "select page" checkbox — never a per-row checkbox. */
 function findPageSelectControl(): HTMLElement | null {
-  // A checkbox/radio outside any individual message row, with a toolbar
-  // ancestor. role=checkbox or input[type=checkbox].
+  // BUG-006: only accept a checkbox within a toolbar/header context. The
+  // arbitrary "first non-row checkbox" fallback is removed — it could match
+  // a sidebar checkbox or any unrelated control.
   const candidates = document.querySelectorAll<HTMLElement>(
     '[role="checkbox"], input[type="checkbox"]',
   );
@@ -36,20 +37,19 @@ function findPageSelectControl(): HTMLElement | null {
     const inToolbar = candidate.closest('[role="toolbar"], header, [role="banner"]') !== null;
     if (inToolbar) return candidate;
   }
-  // Fallback: the first non-row checkbox.
-  for (const candidate of candidates) {
-    if (candidate.closest('[role="listitem"], tr[role="row"]')) continue;
-    if (candidate.closest("#giso-extension-root")) continue;
-    if (isInteractable(candidate)) return candidate;
-  }
   return null;
 }
 
-function isCheckboxChecked(el: HTMLElement): boolean {
+/** BUG-039: distinguish checkbox states. "mixed" is NOT "checked". */
+type CheckboxState = "unchecked" | "mixed" | "checked" | "unknown";
+
+function getCheckboxState(el: HTMLElement): CheckboxState {
   const aria = el.getAttribute("aria-checked");
-  if (aria === "true" || aria === "mixed") return true;
-  if (el instanceof HTMLInputElement) return el.checked;
-  return false;
+  if (aria === "true") return "checked";
+  if (aria === "mixed") return "mixed";
+  if (aria === "false") return "unchecked";
+  if (el instanceof HTMLInputElement) return el.checked ? "checked" : "unchecked";
+  return "unknown";
 }
 
 /** Click the page-select control and confirm a selection state change (§54.1). */
@@ -73,21 +73,27 @@ export async function selectCurrentPage(
     );
   }
 
-  const wasChecked = isCheckboxChecked(control);
+  const wasState = getCheckboxState(control);
+  // BUG-039: if already fully checked, don't click (would deselect).
+  if (wasState === "checked") return true;
   // Re-resolve immediately before click (§51.6).
   if (!control.isConnected) {
     throwAppError(appError("GISO-SELECT-PAGE-002", "selectFailed", "stale checkbox", true));
   }
   control.click();
 
-  // Wait for postcondition: checked state changes OR action buttons appear.
+  // BUG-006: postcondition requires the checkbox to become "checked" (not just
+  // "mixed" or "any toolbar button exists"). Toolbar buttons exist pre-selection.
   while (performance.now() - started < timeoutMs) {
     assertNotAborted(signal);
-    const nowChecked = isCheckboxChecked(control);
-    const actionButtons = document.querySelectorAll(
-      '[role="toolbar"] [role="button"], [role="toolbar"] button',
-    ).length;
-    if ((!wasChecked && nowChecked) || actionButtons > 0) return true;
+    const nowState = getCheckboxState(control);
+    if (nowState === "checked") return true;
+    // "mixed" is partial — click again to complete, then re-check.
+    if (nowState === "mixed" && wasState !== "mixed") {
+      control.click();
+      await delay(200, signal);
+      if (getCheckboxState(control) === "checked") return true;
+    }
     await delay(50, signal);
   }
   // One controlled retry (§16.2). isConnected is a real re-resolve guard even
@@ -96,7 +102,7 @@ export async function selectCurrentPage(
   if (control.isConnected && isInteractable(control)) {
     control.click();
     await delay(200, signal);
-    if (isCheckboxChecked(control)) return true;
+    if (getCheckboxState(control) === "checked") return true;
   }
   throwAppError(appError("GISO-SELECT-PAGE-002", "selectFailed", "selection not confirmed", true));
 }
