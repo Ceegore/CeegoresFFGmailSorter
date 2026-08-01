@@ -150,10 +150,16 @@ export async function submitAndWaitUntilReady(
     if (form) {
       form.requestSubmit();
     } else {
-      box.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }),
+      // BUG-070: synthetic Enter does not reliably trigger native submission.
+      // Instead of a fake keyboard event, fall back to a manual-failure state.
+      throwAppError(
+        appError(
+          "GISO-SEARCH-SUBMIT-001",
+          "searchFailed",
+          "no search button or form found; manual fallback required",
+          true,
+        ),
       );
-      box.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", code: "Enter", bubbles: true }));
     }
   }
 

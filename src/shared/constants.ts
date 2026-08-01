@@ -2,6 +2,10 @@ export const GMAIL_HOME_URL = "https://mail.google.com/" as const;
 export const OVERLAY_ROOT_ID = "giso-extension-root" as const;
 export const BRAND_CREDIT = "made by Ceegore" as const;
 
+// BUG-061: the documented adapter version must exist as a real constant. Used
+// in diagnostic exports, release metadata, and fixture metadata.
+export const GMAIL_ADAPTER_VERSION = "2026.07.1" as const;
+
 /**
  * SAFE MODE (Phase A of the bug-fix plan, report §11).
  *

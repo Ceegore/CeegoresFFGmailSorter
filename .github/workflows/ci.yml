@@ -10,17 +10,29 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # BUG-073: actions pinned to specific minor versions (SHA pinning is the
+      # final hardening step before release — requires human to resolve SHAs).
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-node@v4.3.0
         with:
           node-version: 24.18.0
           cache: npm
+      # BUG-029: verify npm version matches the engine requirement.
+      - name: Verify npm version
+        run: |
+          NPM_VERSION=$(npm --version)
+          if [[ ! "$NPM_VERSION" =~ ^11\. ]]; then
+            echo "ERROR: npm $NPM_VERSION does not satisfy >=11 <12"
+            exit 1
+          fi
       - run: npm ci
       - run: npx playwright install --with-deps firefox
+      # BUG-060: spec hash is the first gate — before any build or test.
+      - run: npm run verify:spec-hash
       - run: npm run verify
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: verification-evidence
           path: |
