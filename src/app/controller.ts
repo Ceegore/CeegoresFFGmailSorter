@@ -10,6 +10,7 @@ import type { AppEvent } from "@/app/events";
 import { isCriticalWorkflow } from "@/app/state-machine";
 import type { AppState } from "@/shared/types";
 import { analyzeCurrentInbox } from "@/analyzer/inbox-analyzer";
+import { detectAccountSlot } from "@/gmail/dom-detectors";
 import { buildInboxSenderQuery, submitAndWaitUntilReady } from "@/gmail/search-controller";
 import { selectCurrentPage, trySelectAllMatches } from "@/gmail/selection-controller";
 import { openMoveMenu } from "@/gmail/move-controller";
@@ -58,6 +59,10 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
   // changes are expected and must NOT invalidate the session.
   let expectedRouteTransition = false;
   let expectedRouteGraceUntil = 0;
+  // CUR-009: the account slot captured before the search drives the expected
+  // route. Even during the post-search grace window, a switch to a different
+  // account is never an expected transition and must invalidate immediately.
+  let expectedAccountSlot: number | null = null;
 
   const dispatch = (event: AppEvent): { accepted: boolean } => {
     return store.dispatch(event);
@@ -107,6 +112,15 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
         error instanceof GisoError
           ? error.app
           : appError("GISO-INTERNAL-001", "internal", toTechnicalMessage(error), true);
+      // CUR-010: an account-slot mismatch during search means the user is now
+      // looking at a different account. The recovered analysis belongs to the
+      // previous account, so it must not be preserved — ROUTE_CONTEXT_INVALIDATED
+      // discards all session state and resets to IDLE (analysis: null).
+      if (wrapped.code === "GISO-SEARCH-ACCOUNT-001") {
+        abortController = null;
+        dispatch({ type: "ROUTE_CONTEXT_INVALIDATED" });
+        return;
+      }
       if (groupId) {
         dispatch({ type: "WORKFLOW_FAILED", groupId, error: wrapped });
       } else {
@@ -155,6 +169,9 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
         const query = buildInboxSenderQuery(group.normalizedEmail);
         dispatch({ type: "SEARCH_SUBMITTED", query });
         // BUG-035: the search will navigate Gmail's route; that is expected.
+        // CUR-009: remember the account slot so a user-initiated account
+        // switch can be detected even during the grace window.
+        expectedAccountSlot = detectAccountSlot();
         expectedRouteTransition = true;
         let evidence: Awaited<ReturnType<typeof submitAndWaitUntilReady>>;
         try {
@@ -281,7 +298,18 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
     },
     invalidateOnRouteChange(): void {
       // BUG-004/035: ignore route changes the workflow itself is driving.
-      if (expectedRouteTransition || performance.now() < expectedRouteGraceUntil) return;
+      if (expectedRouteTransition || performance.now() < expectedRouteGraceUntil) {
+        // CUR-009: even during the grace window (or an in-flight transition),
+        // a switch to a different account slot is never expected — it means the
+        // user changed accounts mid-flow. Invalidate immediately so analysis
+        // from the previous account is never resurfaced.
+        const currentSlot = detectAccountSlot();
+        if (currentSlot !== expectedAccountSlot) {
+          // Account changed during grace — fall through to hard invalidation.
+        } else {
+          return; // same account, allow the grace
+        }
+      }
       abortController?.abort();
       abortController = null;
       dispatch({ type: "ROUTE_CONTEXT_INVALIDATED" });

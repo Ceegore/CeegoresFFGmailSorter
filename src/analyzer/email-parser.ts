@@ -12,6 +12,12 @@ export type EmailParseError =
 // with String.raw, but a raw backtick inside the local class is an invalid
 // escape under the regex `u` flag, so the classes are written as plain
 // strings here. The matching behavior is identical to the spec's intent.
+// DATA-002: V1 supports ASCII-only local parts per the spec. SMTPUTF8 local
+// parts (RFC 6531, e.g. "üser@example.com" or "用户@example.com") are a known
+// limitation — the LOCAL class is ASCII by design, so emails with Unicode
+// local parts are correctly rejected rather than silently truncated. Gmail's
+// web UI does not emit such addresses in the row attributes V1 reads, so this
+// does not lose recurring senders in practice.
 const LOCAL = "[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+";
 const DOMAIN =
   "(?:[A-Z0-9\\u0080-\\u{10FFFF}](?:[A-Z0-9\\u0080-\\u{10FFFF}-]{0,61}[A-Z0-9\\u0080-\\u{10FFFF}])?)" +

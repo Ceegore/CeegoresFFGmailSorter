@@ -13,6 +13,7 @@ import {
   persistPosition,
   wirePositioning,
   DEFAULT_POSITION,
+  type Position,
 } from "@/ui/overlay-position";
 import STYLES from "@/ui/styles.css?raw";
 
@@ -40,6 +41,9 @@ export function renderApp(shadow: ShadowRoot, state: AppState, controller: AppCo
   const body = overlay.querySelector<HTMLElement>("[data-testid='giso-body']");
   if (!body) return;
 
+  // CUR-022: set the overlay's visibility BEFORE any focus management.
+  overlay.style.display = state.overlayVisible ? "" : "none";
+
   // BUG-004 / ITI-004: preserve focus across re-renders. The filter input (and
   // other focusable controls) loses focus when body.replaceChildren() rebuilds
   // the DOM. Snapshot the focused element's data-testid + selection before the
@@ -61,21 +65,25 @@ export function renderApp(shadow: ShadowRoot, state: AppState, controller: AppCo
   }
 
   // Restore focus to the previously focused element by data-testid.
-  if (activeTestid) {
+  // CUR-023: track whether focus was actually restored. If the previous
+  // element's data-testid no longer exists in the new view, fall through to the
+  // heading/button fallback below instead of leaving the overlay unfocused.
+  let focusRestored = false;
+  if (state.overlayVisible && activeTestid) {
     const el = body.querySelector<HTMLElement>(`[data-testid="${activeTestid}"]`);
     if (el) {
       el.focus();
       if (el instanceof HTMLInputElement && selectionStart !== null && selectionEnd !== null) {
         el.setSelectionRange(selectionStart, selectionEnd);
       }
+      focusRestored = true;
     }
   }
 
-  // ITI-047: if no element had focus before, move focus to the view's heading
-  // or first interactive element for accessibility. The overlay has
-  // role="dialog" but previously did not manage focus on view transitions,
-  // leaving screen reader users without a sensible target after a state change.
-  if (!activeTestid) {
+  // CUR-022: only run fallback focus management when overlay is visible.
+  // ITI-047/CUR-023: if no element had focus before (or focus could not be
+  // restored), move focus to the view's heading or first interactive element.
+  if (state.overlayVisible && !focusRestored) {
     const heading = body.querySelector<HTMLElement>("h1, h2, h3, [role='heading']");
     if (heading) {
       heading.focus();
@@ -88,8 +96,6 @@ export function renderApp(shadow: ShadowRoot, state: AppState, controller: AppCo
   // Footer carries exactly one brand credit, reattached each render.
   const footer = overlay.querySelector<HTMLElement>("[data-testid='giso-footer']");
   footer?.replaceChildren(renderBrandCredit());
-
-  overlay.style.display = state.overlayVisible ? "" : "none";
 }
 
 function buildShell(): HTMLElement {
@@ -169,9 +175,7 @@ function wireHandleOnce(overlay: HTMLElement): void {
         (overlay as OverlayWithCleanup).__positioningCleanup = wirePositioning(
           overlay,
           handle,
-          (p) => {
-            void persistPosition(p);
-          },
+          persistCallback,
           pos,
         );
       }
@@ -185,9 +189,7 @@ function wireHandleOnce(overlay: HTMLElement): void {
         (overlay as OverlayWithCleanup).__positioningCleanup = wirePositioning(
           overlay,
           handle,
-          (p) => {
-            void persistPosition(p);
-          },
+          persistCallback,
         );
       }
     });
@@ -195,4 +197,17 @@ function wireHandleOnce(overlay: HTMLElement): void {
 
 function overlayCleanup(overlay: HTMLElement): (() => void) | undefined {
   return (overlay as OverlayWithCleanup).__positioningCleanup;
+}
+
+/**
+ * CUR-030: persistence is debounced inside wirePositioning (last-write-wins),
+ * but the persistPosition promise itself can reject if storage.local is
+ * unavailable or the quota is exceeded. Swallow the rejection here so it never
+ * becomes an unhandled rejection — the overlay keeps its in-memory position
+ * regardless; only the saved value is lost, which is the correct V1 behavior.
+ */
+function persistCallback(pos: Position): void {
+  void persistPosition(pos).catch(() => {
+    /* storage may be unavailable; position not saved */
+  });
 }

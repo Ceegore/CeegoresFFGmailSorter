@@ -73,6 +73,14 @@ export async function waitForMutationState<T extends string | number | boolean>(
       characterData: true,
     });
     signal.addEventListener("abort", onAbort, { once: true });
+    // CUR-033: recheck after registering the listener — an abort could fire
+    // between the top-of-function assertNotAborted and addEventListener.
+    if (signal.aborted) {
+      finish(() => {
+        reject(new DOMException("Operation aborted", "AbortError"));
+      });
+      return;
+    }
     check();
   });
 }

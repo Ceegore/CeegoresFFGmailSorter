@@ -4,6 +4,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { observeRoutes } from "@/gmail/route-observer";
 
+// CUR-032: the observer watches only childList mutations (not attributes), so
+// tests drive it with a structural mutation rather than an attribute toggle.
+function triggerMutation(): void {
+  const el = document.createElement("div");
+  document.documentElement.append(el);
+  el.remove();
+}
+
 describe("observeRoutes", () => {
   it("fires on hashchange IMMEDIATELY (ITI-006, not debounced)", () => {
     vi.useFakeTimers();
@@ -59,6 +67,7 @@ describe("observeRoutes", () => {
     loc.href = "https://mail.google.com/#search/from:z";
     // A mutation that coincides with a changed href.
     document.documentElement.setAttribute("data-giso-probe", "1");
+    triggerMutation();
     // The MutationObserver microtask flushes; schedule() runs and arms a timer.
     await Promise.resolve();
     await Promise.resolve();
@@ -81,6 +90,7 @@ describe("observeRoutes", () => {
     for (let i = 0; i < 1001; i++) {
       loc.href = `https://mail.google.com/#inbox/${String(i)}`;
       document.documentElement.setAttribute("data-giso-probe", String(i));
+      triggerMutation();
       await Promise.resolve();
     }
     vi.advanceTimersByTime(200); // normal debounce (150) would have fired by now
@@ -100,6 +110,7 @@ describe("observeRoutes", () => {
     // First mutation: establishes firstMutationAt and arms the debounce timer.
     loc.href = "https://mail.google.com/#search/first";
     document.documentElement.setAttribute("data-giso-probe", "first");
+    triggerMutation();
     await Promise.resolve();
     await Promise.resolve();
     // Keep mutating every 150ms (each resets the debounce timer) for 1000ms+.
@@ -108,6 +119,7 @@ describe("observeRoutes", () => {
       vi.advanceTimersByTime(150);
       loc.href = `https://mail.google.com/#search/burst/${String(t)}`;
       document.documentElement.setAttribute("data-giso-probe", `burst-${String(t)}`);
+      triggerMutation();
       // Flush the MutationObserver microtask batch so schedule() runs.
       await Promise.resolve();
       await Promise.resolve();

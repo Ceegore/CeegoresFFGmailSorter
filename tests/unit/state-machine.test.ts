@@ -141,6 +141,7 @@ describe("state machine", () => {
     const withResults = {
       ...initialState,
       workflow: "RESULTS_READY" as const,
+      activeGroupId: "sender:a@example.com",
       analysis: analysis([group({ status: "done" })]),
     };
     const s = reduceAppState(withResults, {

@@ -113,8 +113,18 @@ function updateGroupEvent(
   // BUG-051: group-status events are bound to workflow + active group.
   // IGNORE_GROUP is only legal from RESULTS_READY; the workflow-bound status
   // events (IN_PROGRESS/READY/DONE/ERROR) only apply to the active group.
+  // CUR-001: MARK_GROUP_READY is the retry path triggered from RESULTS_READY
+  // via restoreGroup, where activeGroupId is null. It only flips an error or
+  // in-progress group back to ready (non-destructive), so it is safe to allow
+  // for any group that exists and is currently errored or in-progress — no
+  // activeGroupId match required. The replaceGroup updater still guards the
+  // status transition, so a non-matching status returns the same group and the
+  // final equality check treats it as a no-op (illegal) dispatch.
   if (event.type === "IGNORE_GROUP") {
     if (state.workflow !== "RESULTS_READY") return illegal(state, event);
+  } else if (event.type === "MARK_GROUP_READY") {
+    const target = state.analysis?.groups.find((group) => group.id === event.groupId);
+    if (!target || !["error", "in-progress"].includes(target.status)) return illegal(state, event);
   } else {
     if (event.groupId !== state.activeGroupId) return illegal(state, event);
   }

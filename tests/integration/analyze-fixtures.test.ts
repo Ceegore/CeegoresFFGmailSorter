@@ -109,19 +109,23 @@ describe("ITI-014: analysis is rejected when Gmail has an active selection", () 
   });
 
   it("rejects analysis when a row checkbox is checked", async () => {
+    // CUR-018: the selection guard is now scoped to [role="main"], which is
+    // where Gmail renders its message-list checkboxes. Append the checkbox
+    // inside the main mail surface so the guard correctly trips.
     const checked = document.createElement("div");
     checked.setAttribute("role", "checkbox");
     checked.setAttribute("aria-checked", "true");
-    document.body.append(checked);
+    document.querySelector('[role="main"]')?.append(checked);
     const err = await analyzeCurrentInbox(new AbortController().signal).catch((e: unknown) => e);
     expect(toAppError(err).code).toBe("GISO-SELECTION-CONFLICT-001");
   });
 
   it("rejects analysis when a row checkbox is in the mixed (indeterminate) state", async () => {
+    // CUR-018: scoped to [role="main"].
     const mixed = document.createElement("div");
     mixed.setAttribute("role", "checkbox");
     mixed.setAttribute("aria-checked", "mixed");
-    document.body.append(mixed);
+    document.querySelector('[role="main"]')?.append(mixed);
     const err = await analyzeCurrentInbox(new AbortController().signal).catch((e: unknown) => e);
     expect(toAppError(err).code).toBe("GISO-SELECTION-CONFLICT-001");
   });

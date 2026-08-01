@@ -55,11 +55,26 @@ export function observeRoutes(onRouteChange: () => void): RouteObserver {
     }
   };
 
+  // CUR-031: instrument History API so pushState/replaceState are detected
+  // even without a DOM mutation.
+  const originalPushState = history.pushState.bind(history);
+  const originalReplaceState = history.replaceState.bind(history);
+  history.pushState = function (...args: Parameters<typeof history.pushState>) {
+    originalPushState(...args);
+    onHashChange();
+  };
+  history.replaceState = function (...args: Parameters<typeof history.replaceState>) {
+    originalReplaceState(...args);
+    onHashChange();
+  };
+
   const observer = new MutationObserver(schedule);
+  // CUR-032: attributes:true watches every attribute change in the entire
+  // document (class toggles, style updates, aria changes) — the dominant
+  // mutation source and irrelevant to route detection. Keep only childList.
   observer.observe(document.documentElement, {
     subtree: true,
     childList: true,
-    attributes: true,
   });
   window.addEventListener("hashchange", onHashChange);
   window.addEventListener("popstate", onHashChange);
@@ -69,6 +84,8 @@ export function observeRoutes(onRouteChange: () => void): RouteObserver {
       if (timer !== null) window.clearTimeout(timer);
       window.removeEventListener("hashchange", onHashChange);
       window.removeEventListener("popstate", onHashChange);
+      history.pushState = originalPushState;
+      history.replaceState = originalReplaceState;
     },
   };
 }

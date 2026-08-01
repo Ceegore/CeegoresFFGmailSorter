@@ -7,6 +7,25 @@ import { promisify } from "node:util";
 const exec = promisify(execFile);
 const releaseDir = resolve("artifacts/release");
 
+// REL-001: verify a clean working tree so the dist built from it matches the
+// source.zip archived from HEAD. git is a real executable, so shell:false.
+const { stdout: status } = await exec("git", ["status", "--porcelain"], {
+  shell: false,
+});
+if (status.trim()) {
+  throw new Error(
+    "Working tree is not clean. Commit or stash changes before packaging.\n" + status,
+  );
+}
+
+// REL-002: run verification gates (minus e2e and audit, which need extra setup)
+// before building so package never emits an unverified release.
+console.log("Running verification gates...");
+await exec("npm", ["run", "format:check"], { shell: true });
+await exec("npm", ["run", "lint"], { shell: true });
+await exec("npm", ["run", "typecheck"], { shell: true });
+await exec("npm", ["run", "test"], { shell: true });
+
 // ITI-063: rebuild dist from source before packaging so a stale/older dist can
 // never be bundled into a release artifact. build.mjs resolves its own root via
 // import.meta.dirname, so running it from the project root reproduces a clean
@@ -27,10 +46,10 @@ await exec(
   webExt,
   ["build", "--source-dir", "dist", "--artifacts-dir", releaseDir, "--overwrite-dest"],
   {
-    // C-1: On Windows the resolved binary is web-ext.cmd, which requires a
-    // shell to spawn (Node refuses to execute .cmd/.bat files with shell:false).
-    // git is a real executable so its call below keeps shell:false.
-    shell: true,
+    // REL-003: only Windows needs a shell because the binary is web-ext.cmd;
+    // Node refuses to spawn .cmd/.bat files with shell:false. Other platforms
+    // use a real executable and run without a shell.
+    shell: process.platform === "win32",
   },
 );
 await exec(

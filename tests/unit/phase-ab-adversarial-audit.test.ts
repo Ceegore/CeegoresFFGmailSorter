@@ -70,10 +70,8 @@ vi.mock("@/analyzer/inbox-analyzer", () => ({
   ),
 }));
 
-import { createStore } from "@/app/store";
+import { createProductionStore } from "../helpers/production-store";
 import { createAppController } from "@/app/controller";
-import { reduceAppState } from "@/app/state-machine";
-import { initialState } from "@/app/initial-state";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -86,12 +84,7 @@ beforeEach(() => {
 // when the dispatch was rejected.
 describe("ADVERSARIAL: confirmManualSelection / reopenMoveMenu gating (BUG-010)", () => {
   it("confirmManualSelection in safe mode must NOT call openMoveMenu", async () => {
-    const store = createStore(initialState, reduceAppState, (s) => [
-      s.workflow,
-      s.activeGroupId
-        ? (s.analysis?.groups.find((g) => g.id === s.activeGroupId)?.status ?? "")
-        : "",
-    ]);
+    const store = createProductionStore();
     const c = createAppController(store);
     // In safe mode, the workflow is at SEARCH_READY_MANUAL (never reaches
     // MANUAL_SELECT_ALL). Calling confirmManualSelection should be a no-op.
@@ -106,12 +99,7 @@ describe("ADVERSARIAL: confirmManualSelection / reopenMoveMenu gating (BUG-010)"
   });
 
   it("reopenMoveMenu in safe mode must NOT call openMoveMenu", async () => {
-    const store = createStore(initialState, reduceAppState, (s) => [
-      s.workflow,
-      s.activeGroupId
-        ? (s.analysis?.groups.find((g) => g.id === s.activeGroupId)?.status ?? "")
-        : "",
-    ]);
+    const store = createProductionStore();
     const c = createAppController(store);
     await c.analyze();
     c.selectGroup("sender:a@example.com");
@@ -125,12 +113,7 @@ describe("ADVERSARIAL: confirmManualSelection / reopenMoveMenu gating (BUG-010)"
 // ---- PROBE 2: cancel during ANALYZING (no analysis) → BUG-050 ----
 describe("ADVERSARIAL: cancel during ANALYZING (BUG-050 no-analysis case)", () => {
   it("cancel during ANALYZING must not leave a stuck CANCELLED state", async () => {
-    const store = createStore(initialState, reduceAppState, (s) => [
-      s.workflow,
-      s.activeGroupId
-        ? (s.analysis?.groups.find((g) => g.id === s.activeGroupId)?.status ?? "")
-        : "",
-    ]);
+    const store = createProductionStore();
     const c = createAppController(store);
     // Start analysis but don't await — simulate cancel mid-analysis.
     const analysisPromise = c.analyze();
@@ -150,12 +133,7 @@ describe("ADVERSARIAL: cancel during ANALYZING (BUG-050 no-analysis case)", () =
 // ---- PROBE 3: ROUTE_CONTEXT_INVALIDATED preserves overlayVisible ----
 describe("ADVERSARIAL: ROUTE_CONTEXT_INVALIDATED overlay visibility", () => {
   it("keeps the overlay visible after invalidation", () => {
-    const store = createStore(initialState, reduceAppState, (s) => [
-      s.workflow,
-      s.activeGroupId
-        ? (s.analysis?.groups.find((g) => g.id === s.activeGroupId)?.status ?? "")
-        : "",
-    ]);
+    const store = createProductionStore();
     const c = createAppController(store);
     // Make overlay visible first.
     void c.handleBackgroundMessage("SHOW_OVERLAY");
@@ -170,12 +148,7 @@ describe("ADVERSARIAL: ROUTE_CONTEXT_INVALIDATED overlay visibility", () => {
 // ---- PROBE 4: double confirmSearch doesn't start two searches ----
 describe("ADVERSARIAL: double confirmSearch (BUG-010 double-click)", () => {
   it("second confirmSearch from SEARCH_READY_MANUAL is rejected (no second search)", async () => {
-    const store = createStore(initialState, reduceAppState, (s) => [
-      s.workflow,
-      s.activeGroupId
-        ? (s.analysis?.groups.find((g) => g.id === s.activeGroupId)?.status ?? "")
-        : "",
-    ]);
+    const store = createProductionStore();
     const c = createAppController(store);
     await c.analyze();
     c.selectGroup("sender:a@example.com");
@@ -192,12 +165,7 @@ describe("ADVERSARIAL: double confirmSearch (BUG-010 double-click)", () => {
 // ---- PROBE 5: ignoreGroup during CONFIRM_SEARCH is rejected (BUG-051) ----
 describe("ADVERSARIAL: ignoreGroup from non-RESULTS_READY (BUG-051)", () => {
   it("ignoreGroup from CONFIRM_SEARCH is rejected", async () => {
-    const store = createStore(initialState, reduceAppState, (s) => [
-      s.workflow,
-      s.activeGroupId
-        ? (s.analysis?.groups.find((g) => g.id === s.activeGroupId)?.status ?? "")
-        : "",
-    ]);
+    const store = createProductionStore();
     const c = createAppController(store);
     await c.analyze();
     c.selectGroup("sender:a@example.com");

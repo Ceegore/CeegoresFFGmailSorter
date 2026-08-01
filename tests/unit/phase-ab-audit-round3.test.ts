@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { createProductionStore } from "../helpers/production-store";
 
 // ---- PROBE 1: brand credit appears in EVERY rendered view state ----
 // The spec §56.3 requires exactly one brand credit per render, in every state.
@@ -27,15 +28,13 @@ describe("ROUND3: brand credit in every view", () => {
       const { renderApp } = await import("@/ui/render");
       const { ensureOverlayHost } = await import("@/ui/overlay-host");
       const { createAppController } = await import("@/app/controller");
-      const { createStore } = await import("@/app/store");
-      const { reduceAppState } = await import("@/app/state-machine");
       const { initialState } = await import("@/app/initial-state");
       const { appError } = await import("@/shared/errors");
 
       document.querySelectorAll("#giso-extension-root").forEach((el) => {
         el.remove();
       });
-      const store = createStore(initialState, reduceAppState, (s) => [s.workflow]);
+      const store = createProductionStore();
       const c = createAppController(store);
       const { shadow } = ensureOverlayHost();
 
@@ -57,12 +56,8 @@ describe("ROUND3: brand credit in every view", () => {
 
 // ---- PROBE 2: store subscriber isolation under rapid dispatch ----
 describe("ROUND3: store subscriber under rapid dispatch", () => {
-  it("subscriber receives only changed states, not unchanged", async () => {
-    const { createStore } = await import("@/app/store");
-    const { reduceAppState } = await import("@/app/state-machine");
-    const { initialState } = await import("@/app/initial-state");
-
-    const store = createStore(initialState, reduceAppState, (s) => [s.workflow]);
+  it("subscriber receives only changed states, not unchanged", () => {
+    const store = createProductionStore();
     const received: string[] = [];
     store.subscribe((s) => {
       received.push(s.workflow);
@@ -86,12 +81,9 @@ describe("ROUND3: store subscriber under rapid dispatch", () => {
 // ---- PROBE 3: controller dispose is idempotent ----
 describe("ROUND3: controller dispose idempotency", () => {
   it("double dispose does not throw", async () => {
-    const { createStore } = await import("@/app/store");
-    const { reduceAppState } = await import("@/app/state-machine");
-    const { initialState } = await import("@/app/initial-state");
     const { createAppController } = await import("@/app/controller");
 
-    const store = createStore(initialState, reduceAppState, (s) => [s.workflow]);
+    const store = createProductionStore();
     const c = createAppController(store);
     c.dispose();
     expect(() => {
@@ -106,14 +98,12 @@ describe("ROUND3: SEARCH_READY_MANUAL view content", () => {
     const { renderApp } = await import("@/ui/render");
     const { ensureOverlayHost } = await import("@/ui/overlay-host");
     const { createAppController } = await import("@/app/controller");
-    const { createStore } = await import("@/app/store");
-    const { reduceAppState } = await import("@/app/state-machine");
     const { initialState } = await import("@/app/initial-state");
 
     document.querySelectorAll("#giso-extension-root").forEach((el) => {
       el.remove();
     });
-    const store = createStore(initialState, reduceAppState, (s) => [s.workflow]);
+    const store = createProductionStore();
     const c = createAppController(store);
     const { shadow } = ensureOverlayHost();
 
@@ -203,12 +193,9 @@ describe("ROUND3: SAFE_MODE in dist bundle", () => {
 // ---- PROBE 7: abort controller lifecycle — cancel then analyze restarts cleanly ----
 describe("ROUND3: abort lifecycle (cancel → re-analyze)", () => {
   it("analyze after cancel works without stale abort", async () => {
-    const { createStore } = await import("@/app/store");
-    const { reduceAppState } = await import("@/app/state-machine");
-    const { initialState } = await import("@/app/initial-state");
     const { createAppController } = await import("@/app/controller");
 
-    const store = createStore(initialState, reduceAppState, (s) => [s.workflow]);
+    const store = createProductionStore();
     const c = createAppController(store);
 
     // Cancel from IDLE (no-op effectively, but tests robustness).

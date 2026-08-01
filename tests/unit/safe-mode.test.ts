@@ -72,10 +72,8 @@ vi.mock("@/analyzer/inbox-analyzer", () => ({
   ),
 }));
 
-import { createStore } from "@/app/store";
+import { createProductionStore } from "../helpers/production-store";
 import { createAppController } from "@/app/controller";
-import { reduceAppState } from "@/app/state-machine";
-import { initialState } from "@/app/initial-state";
 import { SAFE_MODE } from "@/shared/constants";
 
 beforeEach(() => {
@@ -92,7 +90,7 @@ describe("Phase A safe mode", () => {
   });
 
   it("confirmSearch stops at SEARCH_READY_MANUAL and never calls selection/move/completion", async () => {
-    const store = createStore(initialState, reduceAppState);
+    const store = createProductionStore();
     const c = createAppController(store);
     await c.analyze();
     c.selectGroup("sender:a@example.com");
@@ -108,7 +106,7 @@ describe("Phase A safe mode", () => {
   });
 
   it("the query is surfaced for manual use", async () => {
-    const store = createStore(initialState, reduceAppState);
+    const store = createProductionStore();
     const c = createAppController(store);
     await c.analyze();
     c.selectGroup("sender:a@example.com");
@@ -118,7 +116,7 @@ describe("Phase A safe mode", () => {
   });
 
   it("manual mark-done completes the group and returns to results", async () => {
-    const store = createStore(initialState, reduceAppState);
+    const store = createProductionStore();
     const c = createAppController(store);
     await c.analyze();
     c.selectGroup("sender:a@example.com");

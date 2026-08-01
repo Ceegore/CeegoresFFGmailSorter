@@ -6,7 +6,8 @@ import { normalizeEmail } from "@/analyzer/email-parser";
 import { assertNotAborted } from "@/shared/abort";
 import { delay } from "@/shared/time";
 import { gmailTextPatterns, matchesAny } from "@/gmail/gmail-text-patterns";
-import { detectAccountSlot } from "@/gmail/dom-detectors";
+import { detectAccountSlot, findMessageListElement } from "@/gmail/dom-detectors";
+import { isInteractable } from "@/shared/dom";
 import { appError, throwAppError } from "@/shared/errors";
 
 export function buildInboxSenderQuery(email: string): string {
@@ -38,12 +39,15 @@ export function findSearchBox(): HTMLInputElement | null {
   const inSearchLandmark = document.querySelector<HTMLInputElement>(
     '[role="search"] input[type="text"], [role="search"] input[type="search"], [role="search"] input[role="searchbox"]',
   );
-  if (inSearchLandmark) return inSearchLandmark;
+  // CUR-003: skip hidden/disabled/stale duplicates — only interactable boxes
+  // count as a real search box.
+  if (inSearchLandmark && isInteractable(inSearchLandmark)) return inSearchLandmark;
   // Fallback: a labelled text input in the header area.
   const headerInputs = document.querySelectorAll<HTMLInputElement>(
     'header input[type="text"], [role="banner"] input[type="text"]',
   );
   for (const input of headerInputs) {
+    if (!isInteractable(input)) continue;
     const label = input.getAttribute("aria-label") ?? "";
     if (/search|suche/iu.test(label)) return input;
   }
@@ -57,6 +61,9 @@ export function findSearchSubmitButton(): HTMLElement | null {
   if (searchLandmark) {
     const buttons = searchLandmark.querySelectorAll<HTMLElement>('[role="button"], button');
     for (const btn of buttons) {
+      // CUR-002: only return interactable buttons — a hidden/disabled/stale
+      // duplicate must not terminate the fallback chain prematurely.
+      if (!isInteractable(btn)) continue;
       const label = `${btn.getAttribute("aria-label") ?? ""} ${btn.textContent || ""}`;
       if (/search|suchen|suche/iu.test(label)) return btn;
     }
@@ -66,6 +73,7 @@ export function findSearchSubmitButton(): HTMLElement | null {
     'header [role="button"], header button, [role="banner"] [role="button"], [role="banner"] button',
   );
   for (const btn of headerButtons) {
+    if (!isInteractable(btn)) continue;
     const label = `${btn.getAttribute("aria-label") ?? ""} ${btn.textContent || ""}`;
     if (/search|suchen|suche/iu.test(label)) return btn;
   }
@@ -115,11 +123,18 @@ function submitSearch(box: HTMLInputElement): void {
 }
 
 function routeFingerprint(): string {
-  return `${location.pathname}#${location.hash}`;
+  // CUR-007: include location.search — Gmail search results can change the
+  // query string (e.g. ?q=...) without altering the hash, so omitting it
+  // missed route changes.
+  return `${location.pathname}${location.search}#${location.hash}`;
 }
 
 function listFingerprint(): string {
-  const rows = document.querySelectorAll('[role="listitem"], tr[role="row"]');
+  // CUR-004: scope the row count to the primary mail list so unrelated global
+  // rows (nav/chat/settings) don't pollute the fingerprint.
+  const list = findMessageListElement();
+  if (!list) return "rows=0";
+  const rows = list.querySelectorAll('[role="listitem"], tr[role="row"]');
   return `rows=${String(rows.length)}`;
 }
 
@@ -133,6 +148,11 @@ function readStatusText(): string {
   const parts: string[] = [];
   for (const region of regions) {
     if (region.closest("#giso-extension-root")) continue;
+    // CUR-005: scope status regions to the main mail surface. Unrelated Gmail
+    // notifications (sidebar/chat) can still match the status/alert roles and
+    // cause false positives, so ignore regions that live outside [role="main"]
+    // or the header.
+    if (!region.closest('[role="main"]') && !region.closest("header")) continue;
     const label = region.getAttribute("aria-label") ?? "";
     const text = region.textContent || "";
     if (label) parts.push(label);
@@ -261,6 +281,10 @@ async function waitForEvidence(
 ): Promise<SearchReadyEvidence> {
   const expected = normalizeQueryForComparison(expectedQuery);
   let stableSince = 0;
+  // CUR-006: track how long the query has been mismatched. Gmail may
+  // transiently clear or normalize the query right after submit; only treat a
+  // sustained mismatch (~500ms) as a real failure.
+  let queryMismatchSince = 0;
   const startedAt = performance.now();
   let lastEvidence: SearchReadyEvidence | null = null;
 
@@ -276,11 +300,17 @@ async function waitForEvidence(
         ),
       );
     }
+    // CUR-004: scope the mail-list detection to the primary mail list so
+    // unrelated global rows anywhere on the page no longer count as evidence.
+    const mailList = findMessageListElement();
+    const mailListDetected =
+      mailList !== null &&
+      mailList.querySelectorAll('[role="listitem"], tr[role="row"]').length > 0;
     const evidence: SearchReadyEvidence = {
       queryMatches: normalizeQueryForComparison(readSearchBoxValue()) === expected,
       routeChanged: routeFingerprint() !== baselineRoute,
       listFingerprintChanged: listFingerprint() !== baselineList,
-      mailListDetected: document.querySelector('[role="listitem"], tr[role="row"]') !== null,
+      mailListDetected,
       emptyStateDetected: isEmptyState(),
       relatedOnlyDetected: isRelatedOnly(),
       loadingVisible: isLoading(),
@@ -298,8 +328,18 @@ async function waitForEvidence(
         ),
       );
     }
+    // CUR-006: don't throw on a transient mismatch. Gmail may briefly clear or
+    // normalize the input; only reject once the mismatch has persisted for
+    // ~500ms continuously.
     if (!evidence.queryMatches) {
-      throwAppError(appError("GISO-SEARCH-MISMATCH-001", "searchFailed", "query mismatch", false));
+      if (queryMismatchSince === 0) queryMismatchSince = performance.now();
+      if (performance.now() - queryMismatchSince > 500) {
+        throwAppError(
+          appError("GISO-SEARCH-MISMATCH-001", "searchFailed", "query mismatch", false),
+        );
+      }
+    } else {
+      queryMismatchSince = 0;
     }
 
     const ready =

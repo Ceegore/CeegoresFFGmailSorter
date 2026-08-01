@@ -32,6 +32,9 @@ export const de = {
   visibleMatches: "Sichtbare Ausgangstreffer",
   searchQuery: "Suchanfrage",
   startSearch: "Suche starten",
+  // CUR-026: the safe-mode manual-workflow view opens AFTER the search has
+  // already run, so "Suche starten" is misleading. This label reflects reality.
+  searchCompleted: "Suche abgeschlossen",
   back: "Zurück",
   manualWorkflowHint:
     "Die Suche wurde in Gmail gestartet. Wähle die Treffer, öffne das „Verschieben nach“-Menü und wähle das Ziel selbst. Das Add-on führt in diesem Modus keine automatischen Klicks aus.",

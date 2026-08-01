@@ -1,6 +1,7 @@
 // PHASE F ADVERSARIAL AUDIT: probes contrast (BUG-057), settings (BUG-059),
 // error translation (BUG-022), diagnostics removal (BUG-016).
 import { beforeEach, describe, expect, it } from "vitest";
+import { createProductionStore } from "../helpers/production-store";
 
 beforeEach(() => {
   document.querySelectorAll("#giso-extension-root").forEach((el) => {
@@ -51,11 +52,9 @@ describe("ADVERSARIAL F: BUG-016 diagnostics button removed", () => {
     const { renderApp } = await import("@/ui/render");
     const { ensureOverlayHost } = await import("@/ui/overlay-host");
     const { createAppController } = await import("@/app/controller");
-    const { createStore } = await import("@/app/store");
-    const { reduceAppState } = await import("@/app/state-machine");
     const { initialState } = await import("@/app/initial-state");
 
-    const store = createStore(initialState, reduceAppState, (s) => [s.workflow]);
+    const store = createProductionStore();
     const c = createAppController(store);
     const { shadow } = ensureOverlayHost();
     renderApp(shadow, { ...initialState, overlayVisible: true }, c);
@@ -73,12 +72,10 @@ describe("ADVERSARIAL F: BUG-022 error text translation", () => {
     const { renderApp } = await import("@/ui/render");
     const { ensureOverlayHost } = await import("@/ui/overlay-host");
     const { createAppController } = await import("@/app/controller");
-    const { createStore } = await import("@/app/store");
-    const { reduceAppState } = await import("@/app/state-machine");
     const { initialState } = await import("@/app/initial-state");
     const { de } = await import("@/i18n/de");
 
-    const store = createStore(initialState, reduceAppState, (s) => [s.workflow]);
+    const store = createProductionStore();
     const c = createAppController(store);
     const { shadow } = ensureOverlayHost();
     renderApp(
@@ -107,12 +104,10 @@ describe("ADVERSARIAL F: BUG-022 error text translation", () => {
     const { renderApp } = await import("@/ui/render");
     const { ensureOverlayHost } = await import("@/ui/overlay-host");
     const { createAppController } = await import("@/app/controller");
-    const { createStore } = await import("@/app/store");
-    const { reduceAppState } = await import("@/app/state-machine");
     const { initialState } = await import("@/app/initial-state");
     const { de } = await import("@/i18n/de");
 
-    const store = createStore(initialState, reduceAppState, (s) => [s.workflow]);
+    const store = createProductionStore();
     const c = createAppController(store);
     const { shadow } = ensureOverlayHost();
     renderApp(

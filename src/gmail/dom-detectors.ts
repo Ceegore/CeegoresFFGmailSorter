@@ -92,6 +92,13 @@ export function detectShell(): Detection<GmailShell> {
   }
   const locale = detectLocale();
   evidence.push(`locale=${locale}`);
+  // CUR-021: when locale is "unknown" we still allow analysis on the inbox
+  // route. The search/selection/move patterns in gmail-text-patterns already
+  // match BOTH de and en, and unknown-language users fall through to the V1
+  // safe-mode manual workflow (no automatic clicks), so an unknown locale never
+  // degrades safety — it only widens the candidate match set. Recording
+  // locale="unknown" in the evidence (above) keeps the shell's locale visible to
+  // diagnostics. This is the intended V1 safe fallback.
   return detectionOk({ mainRoot, locale }, 0.8, evidence);
 }
 
@@ -110,7 +117,14 @@ export function detectCurrentView(): Detection<GmailView> {
   // Only #inbox and known category routes (#category/primary etc.) are allowed.
   const inboxRoute = /^#inbox$/iu.test(hash);
   // Category routes: #category/primary, #category/promotions, etc.
-  const categoryRoute = /^#category\//iu.test(hash);
+  // CUR-011: only the known category tabs at the top level count. A deeper
+  // path like #category/primary/<thread-id> is an open thread, NOT a category
+  // list view, so it must not be treated as inbox-like. The anchored regex
+  // allows an optional trailing slash but rejects any further segment.
+  const categoryRoute =
+    /^#category\/(?:primary|promotions|social|updates|forums|reservations|travel|deals|legal)(?:\/?)?$/iu.test(
+      hash,
+    );
   // Explicitly reject label, sent, trash, spam, drafts, settings, etc.
   const rejectedRoute =
     /^#label\//iu.test(hash) ||
@@ -162,8 +176,11 @@ export function detectCurrentView(): Detection<GmailView> {
 /** Locate the primary message list container. */
 export function findMessageListElement(): HTMLElement | null {
   // Prefer a container explicitly marked as a list of mail rows.
+  // CUR-013: never fall back to an unscoped table[role="grid"] — that bare
+  // selector can match non-mail grids (settings, chat, etc.). Only search
+  // within [role="main"], the primary mail surface.
   const candidates = document.querySelectorAll<HTMLElement>(
-    'div[role="main"] table[role="grid"] tbody, div[role="main"] [role="list"], table[role="grid"]',
+    'div[role="main"] table[role="grid"] tbody, div[role="main"] [role="list"]',
   );
   let best: HTMLElement | null = null;
   let bestRows = 0;
@@ -190,15 +207,19 @@ function countRowLikeChildren(container: HTMLElement): number {
 
 export function looksLikeMessageRow(row: HTMLElement): boolean {
   if (!row.isConnected) return false;
-  // Has an interactive opener or a thread id attribute, and is not inside the
-  // overlay host.
+  // Not inside this extension's own overlay host.
   if (row.closest("#giso-extension-root")) return false;
-  const hasOpener =
-    row.querySelector('a[href], button, [role="button"]') !== null ||
+  // CUR-014: a bare opener (any link/button) is too permissive — it accepts
+  // ads and nav rows. Require EITHER a stable thread/message id attribute OR
+  // both an interactive opener AND sender evidence (an email/hovercard attr).
+  const hasStableId =
     row.hasAttribute("data-thread-id") ||
     row.hasAttribute("data-legacy-thread-id") ||
     row.hasAttribute("data-message-id");
-  return hasOpener;
+  const hasSenderAttr = row.querySelector("[email], [data-email], [data-hovercard-id]") !== null;
+  const hasOpener = row.querySelector('a[href], button, [role="button"]') !== null;
+  // Require stable ID, or both sender evidence AND an opener
+  return hasStableId || (hasSenderAttr && hasOpener);
 }
 
 export function collectMessageRows(list: HTMLElement): HTMLElement[] {

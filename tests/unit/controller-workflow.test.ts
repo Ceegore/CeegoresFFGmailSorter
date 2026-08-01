@@ -66,10 +66,8 @@ vi.mock("@/analyzer/inbox-analyzer", () => ({
   ),
 }));
 
-import { createStore } from "@/app/store";
+import { createProductionStore } from "../helpers/production-store";
 import { createAppController } from "@/app/controller";
-import { reduceAppState } from "@/app/state-machine";
-import { initialState } from "@/app/initial-state";
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -77,7 +75,7 @@ beforeEach(() => {
 
 describe("controller workflow", () => {
   it("analyze succeeds and lands in RESULTS_READY", async () => {
-    const store = createStore(initialState, reduceAppState);
+    const store = createProductionStore();
     const c = createAppController(store);
     await c.analyze();
     expect(store.getState().workflow).toBe("RESULTS_READY");
@@ -86,7 +84,7 @@ describe("controller workflow", () => {
   });
 
   it("selectGroup then confirmSearch stops at SEARCH_READY_MANUAL in safe mode (no auto clicks)", async () => {
-    const store = createStore(initialState, reduceAppState);
+    const store = createProductionStore();
     const c = createAppController(store);
     await c.analyze();
     c.selectGroup("sender:a@example.com");
@@ -101,7 +99,7 @@ describe("controller workflow", () => {
   });
 
   it("cancel during an in-progress group restores it to ready", async () => {
-    const store = createStore(initialState, reduceAppState);
+    const store = createProductionStore();
     const c = createAppController(store);
     await c.analyze();
     c.selectGroup("sender:a@example.com");
@@ -117,7 +115,7 @@ describe("controller workflow", () => {
   });
 
   it("returnToResults from SEARCH_READY_MANUAL resets to RESULTS_READY", async () => {
-    const store = createStore(initialState, reduceAppState);
+    const store = createProductionStore();
     const c = createAppController(store);
     await c.analyze();
     c.selectGroup("sender:a@example.com");
@@ -129,7 +127,7 @@ describe("controller workflow", () => {
   });
 
   it("confirmCompletion in safe mode marks the active group done and returns to results", async () => {
-    const store = createStore(initialState, reduceAppState);
+    const store = createProductionStore();
     const c = createAppController(store);
     await c.analyze();
     c.selectGroup("sender:a@example.com");
@@ -142,7 +140,7 @@ describe("controller workflow", () => {
   });
 
   it("setFilter/setSort/ignoreGroup dispatch correctly", () => {
-    const store = createStore(initialState, reduceAppState);
+    const store = createProductionStore();
     const c = createAppController(store);
     c.setFilter("alpha");
     expect(store.getState().filter).toBe("alpha");
@@ -152,7 +150,7 @@ describe("controller workflow", () => {
   });
 
   it("handleBackgroundMessage toggles overlay and returns ok", async () => {
-    const store = createStore(initialState, reduceAppState);
+    const store = createProductionStore();
     const c = createAppController(store);
     const res = await c.handleBackgroundMessage("SHOW_OVERLAY");
     expect(res.ok).toBe(true);
@@ -160,20 +158,23 @@ describe("controller workflow", () => {
     c.dispose();
   });
 
-  it("confirmSearch with no active group fails internally", async () => {
-    const store = createStore(initialState, reduceAppState);
+  it("confirmSearch from an illegal state is rejected (BUG-010 acceptance gating)", async () => {
+    const store = createProductionStore();
     const c = createAppController(store);
-    // Force into CONFIRM_SEARCH without an active group set via SELECT_GROUP.
+    // Drive into ANALYZING, where CONFIRM_SEARCH is illegal (CONFIRM_SEARCH is
+    // only legal from the CONFIRM_SEARCH state, which is reached via SELECT_GROUP
+    // after a successful analysis). With the production acceptance store, the
+    // illegal dispatch returns accepted=false, so the controller short-circuits
+    // and never runs the search task — no FAIL, no effects.
     store.dispatch({ type: "START_ANALYSIS" });
-    // No analysis result, no active group — confirmSearch dispatches CONFIRM_SEARCH
-    // (illegal from ANALYZING) then safeRun's task finds no group -> FAIL.
     await c.confirmSearch();
-    expect(store.getState().error).not.toBeNull();
+    expect(store.getState().error).toBeNull();
+    expect(store.getState().workflow).toBe("ANALYZING");
     c.dispose();
   });
 
   it("cancel from a critical workflow state transitions to CANCELLED", () => {
-    const store = createStore(initialState, reduceAppState);
+    const store = createProductionStore();
     const c = createAppController(store);
     // Drive into a critical state directly via the store.
     store.dispatch({ type: "START_ANALYSIS" });
@@ -219,7 +220,7 @@ describe("controller workflow", () => {
   });
 
   it("resetSession aborts and returns to results", async () => {
-    const store = createStore(initialState, reduceAppState);
+    const store = createProductionStore();
     const c = createAppController(store);
     await c.analyze();
     c.resetSession();
@@ -229,7 +230,7 @@ describe("controller workflow", () => {
   });
 
   it("confirmManualSelection and reopenMoveMenu run without throwing", async () => {
-    const store = createStore(initialState, reduceAppState);
+    const store = createProductionStore();
     const c = createAppController(store);
     await c.analyze();
     c.selectGroup("sender:a@example.com");
@@ -242,7 +243,7 @@ describe("controller workflow", () => {
   });
 
   it("confirmCompletion marks the active group done", () => {
-    const store = createStore(initialState, reduceAppState);
+    const store = createProductionStore();
     const c = createAppController(store);
     store.dispatch({ type: "START_ANALYSIS" });
     store.dispatch({

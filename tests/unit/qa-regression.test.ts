@@ -36,10 +36,8 @@ vi.mock("@/gmail/completion-detector", () => ({
   isAutoConfirmed: () => true,
 }));
 
-import { createStore } from "@/app/store";
+import { createProductionStore } from "../helpers/production-store";
 import { createAppController } from "@/app/controller";
-import { reduceAppState } from "@/app/state-machine";
-import { initialState } from "@/app/initial-state";
 import { GisoError, appError, toAppError } from "@/shared/errors";
 import { extractSenderFromRow } from "@/analyzer/sender-extractor";
 import { buildInboxSenderQuery } from "@/gmail/search-controller";
@@ -108,7 +106,7 @@ vi.mock("@/analyzer/inbox-analyzer", () => ({
 
 /** Build a store+controller pair primed to the SEARCH_READY_MANUAL state. */
 async function driveToSearchReadyManual() {
-  const store = createStore(initialState, reduceAppState);
+  const store = createProductionStore();
   const c = createAppController(store);
   spies.submitAndWaitUntilReady.mockImplementation(() => Promise.resolve(readyEvidence()));
   await c.analyze();
@@ -149,7 +147,7 @@ describe("QA section 11 — safe-mode regression tests", () => {
           appError("GISO-SEARCH-TIMEOUT-001", "searchFailed", "search timed out", true),
         );
       });
-      const store = createStore(initialState, reduceAppState);
+      const store = createProductionStore();
       const c = createAppController(store);
       await c.analyze();
       c.selectGroup(GROUP_ID);
@@ -164,16 +162,25 @@ describe("QA section 11 — safe-mode regression tests", () => {
   });
 
   describe("ITI-003 — error group can be retried", () => {
-    it("restoreGroup returns an errored group to ready status", async () => {
+    it("restoreGroup from RESULTS_READY returns an errored group to ready status", async () => {
       const { store, c } = await driveToSearchReadyManual();
-      // Drive the active group to error via the state machine directly.
+      // The group is in-progress here (set before the search). Mark it error
+      // while still in SEARCH_READY_MANUAL, where MARK_GROUP_ERROR is legal.
       store.dispatch({
         type: "MARK_GROUP_ERROR",
         groupId: GROUP_ID,
         errorCode: "GISO-SEARCH-TIMEOUT-001",
       });
       expect(store.getState().analysis?.groups[0]?.status).toBe("error");
-      // ITI-003: the retry path restores the errored group so it can be actioned again.
+      // Return to the results list. restoreActiveGroupToReady only touches
+      // in-progress groups, so the errored group is preserved and activeGroupId
+      // is cleared — this is exactly the state the real retry button renders in.
+      c.returnToResults();
+      expect(store.getState().workflow).toBe("RESULTS_READY");
+      expect(store.getState().activeGroupId).toBeNull();
+      expect(store.getState().analysis?.groups[0]?.status).toBe("error");
+      // ITI-003: the retry path (rendered in RESULTS_READY, no active group)
+      // restores the errored group so it can be actioned again.
       c.restoreGroup(GROUP_ID);
       expect(store.getState().analysis?.groups[0]?.status).toBe("ready");
       c.dispose();
@@ -240,11 +247,14 @@ describe("QA section 11 — safe-mode regression tests", () => {
       const real = await vi.importActual<AnalyzeCurrentInboxModule>("@/analyzer/inbox-analyzer");
       document.body.innerHTML = "";
       installGmailInboxDom();
-      // Simulate Gmail's existing selection: a checked checkbox outside the overlay.
+      // CUR-018: the selection guard is scoped to [role="main"], where Gmail
+      // renders its message-list checkboxes. Append the checked checkbox inside
+      // the main mail surface (created by installGmailInboxDom) so the guard
+      // correctly trips while selections outside the overlay/main are ignored.
       const checked = document.createElement("div");
       checked.setAttribute("role", "checkbox");
       checked.setAttribute("aria-checked", "true");
-      document.body.append(checked);
+      document.querySelector('[role="main"]')?.append(checked);
 
       const err = await real
         .analyzeCurrentInbox(new AbortController().signal)

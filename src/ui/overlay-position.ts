@@ -52,7 +52,12 @@ export function wirePositioning(
   onPersist: (pos: Position) => void,
   initialPosition?: Position,
 ): () => void {
-  let current: Position = initialPosition ?? DEFAULT_POSITION;
+  // CUR-028: clamp the initial/loaded position before seeding `current` so the
+  // internal state can never diverge from the visually applied value (which is
+  // always clamped by applyPosition). Without this, a persisted off-screen
+  // position would render clamped but remember an unclamped value, so the next
+  // drag/Escape/nudge would jump to the unclamped coordinate.
+  let current: Position = initialPosition ? clampPosition(initialPosition) : DEFAULT_POSITION;
   let dragStart: { x: number; y: number; top: number; right: number } | null = null;
   // ITI-020: initialize to current (which may be the loaded position), not
   // DEFAULT_POSITION, so Escape before any drag is a true no-op.
@@ -90,8 +95,13 @@ export function wirePositioning(
     if (!dragStart) return;
     const dx = event.clientX - dragStart.x;
     const dy = event.clientY - dragStart.y;
-    // right decreases as the overlay moves right; top increases as it moves down.
-    current = clampPosition({ top: dragStart.top + dy, right: dragStart.right - dx });
+    // CUR-029: at narrow widths (innerWidth < 720) CSS pins the overlay to
+    // left:8px; right:8px and ignores the --giso-overlay-right custom property.
+    // Applying a horizontal delta there would persist an invisible/ineffective
+    // right value that later surfaces wrong on a wide viewport. Drop the
+    // horizontal component when narrow so only vertical dragging takes effect.
+    const horizontalDelta = window.innerWidth < 720 ? 0 : -dx;
+    current = clampPosition({ top: dragStart.top + dy, right: dragStart.right + horizontalDelta });
     applyPosition(overlay, current);
   };
   const onPointerUp = (event: PointerEvent): void => {
@@ -116,6 +126,10 @@ export function wirePositioning(
   };
   const onKeyDown = (event: KeyboardEvent): void => {
     const step = event.shiftKey ? NUDGE_PX_FAST : NUDGE_PX;
+    // CUR-029: at narrow widths CSS overrides horizontal positioning, so
+    // ArrowLeft/ArrowRight would nudge an invisible value that reappears wrong
+    // on a later wide viewport. Ignore horizontal keys when narrow.
+    const narrow = window.innerWidth < 720;
     let next: Position;
     switch (event.key) {
       case "ArrowUp":
@@ -125,9 +139,11 @@ export function wirePositioning(
         next = { top: current.top + step, right: current.right };
         break;
       case "ArrowLeft":
+        if (narrow) return;
         next = { top: current.top, right: current.right + step };
         break;
       case "ArrowRight":
+        if (narrow) return;
         next = { top: current.top, right: current.right - step };
         break;
       case "Escape":

@@ -1,33 +1,20 @@
 // ADVERSARIAL AUDIT 2: deeper probes on store acceptance, state machine edges,
 // and the expectedRouteTransition flag. Assumes broken until proven.
 import { describe, expect, it } from "vitest";
-import { createStore } from "@/app/store";
 import { reduceAppState } from "@/app/state-machine";
 import { initialState } from "@/app/initial-state";
 import { createAppController } from "@/app/controller";
-import type { AppState } from "@/shared/types";
-
-// Minimal acceptance fn matching the bootstrap's.
-const acceptance = (s: AppState) => [
-  s.workflow,
-  s.activeGroupId,
-  s.error?.code ?? "",
-  s.analysis !== null,
-  s.overlayVisible,
-  s.expectedQuery ?? "",
-  s.filter,
-  s.sort,
-];
+import { createProductionStore } from "../helpers/production-store";
 
 describe("ADVERSARIAL 2: store acceptance edge cases", () => {
   it("SET_FILTER is accepted (filter changes)", () => {
-    const store = createStore(initialState, reduceAppState, acceptance);
+    const store = createProductionStore();
     expect(store.dispatch({ type: "SET_FILTER", value: "x" }).accepted).toBe(true);
     expect(store.getState().filter).toBe("x");
   });
 
   it("SET_FILTER with same value is NOT accepted (no real change)", () => {
-    const store = createStore(initialState, reduceAppState, acceptance);
+    const store = createProductionStore();
     store.dispatch({ type: "SET_FILTER", value: "x" });
     const r = store.dispatch({ type: "SET_FILTER", value: "x" });
     // ITI-043: the reducer returns the same state reference for an unchanged
@@ -36,13 +23,13 @@ describe("ADVERSARIAL 2: store acceptance edge cases", () => {
   });
 
   it("TOGGLE_OVERLAY when invisible is accepted", () => {
-    const store = createStore(initialState, reduceAppState, acceptance);
+    const store = createProductionStore();
     expect(store.dispatch({ type: "TOGGLE_OVERLAY" }).accepted).toBe(true);
     expect(store.getState().overlayVisible).toBe(true);
   });
 
   it("illegal transition produces accepted=false but still logs diagnostic", () => {
-    const store = createStore(initialState, reduceAppState, acceptance);
+    const store = createProductionStore();
     const r = store.dispatch({ type: "ALL_SELECTED" });
     expect(r.accepted).toBe(false);
     expect(store.getState().workflow).toBe("IDLE"); // unchanged
@@ -50,7 +37,7 @@ describe("ADVERSARIAL 2: store acceptance edge cases", () => {
   });
 
   it("SHOW_OVERLAY when already visible is NOT accepted", () => {
-    const store = createStore(initialState, reduceAppState, acceptance);
+    const store = createProductionStore();
     store.dispatch({ type: "SHOW_OVERLAY" });
     const r = store.dispatch({ type: "SHOW_OVERLAY" });
     expect(r.accepted).toBe(false);
@@ -59,7 +46,7 @@ describe("ADVERSARIAL 2: store acceptance edge cases", () => {
 
 describe("ADVERSARIAL 2: expectedRouteTransition isolation", () => {
   it("invalidateOnRouteChange during IDLE is a safe no-op (no crash)", () => {
-    const store = createStore(initialState, reduceAppState, acceptance);
+    const store = createProductionStore();
     const c = createAppController(store);
     expect(() => {
       c.invalidateOnRouteChange();
@@ -70,7 +57,7 @@ describe("ADVERSARIAL 2: expectedRouteTransition isolation", () => {
   });
 
   it("invalidateOnRouteChange after RESULTS_READY clears analysis", () => {
-    const store = createStore(initialState, reduceAppState, acceptance);
+    const store = createProductionStore();
     const c = createAppController(store);
     // Drive to RESULTS_READY via direct dispatch.
     store.dispatch({ type: "START_ANALYSIS" });

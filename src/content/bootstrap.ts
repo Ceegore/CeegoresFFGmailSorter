@@ -72,6 +72,17 @@ export function bootstrap(): void {
     window.addEventListener("resize", onResize);
 
     const routeObserver = observeRoutes(() => {
+      // CUR-036: a third party (Gmail's own scripts, a conflicting extension,
+      // or a SPA teardown) can remove the overlay host from the document
+      // without our knowledge. The pageshow handler covers bfcache restores,
+      // but an in-life removal while the page stays open would leave the
+      // extension silently absent until reload. On every route change (already
+      // a re-render trigger), first verify the host is still attached; if it
+      // was removed, re-append it and re-render so the overlay self-heals.
+      if (!host.isConnected) {
+        document.documentElement.append(host);
+        renderApp(shadow, store.getState(), controller);
+      }
       // BUG-035: a route change invalidates the session atomically. The
       // controller's own search is handled inside safeRun (it sets an expected
       // transition flag); only UNEXPECTED changes reach here and reset to IDLE.

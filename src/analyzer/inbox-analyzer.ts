@@ -24,14 +24,25 @@ import type { AnalyzedEntry, AnalysisResult, SenderIdentity } from "@/shared/typ
 let analysisRunCounter = 0;
 
 /**
- * ITI-013: a simple count-based fingerprint of the message list's children used
- * only to detect DOM churn during the stability window. This is intentionally a
+ * ITI-013: a simple fingerprint of the message list's children used only to
+ * detect DOM churn during the stability window. This is intentionally a
  * separate, lighter fingerprint than the global listFingerprint used elsewhere —
  * it scopes to a single list element so unrelated DOM changes don't reset the
- * window, and it tracks child element count plus text length as cheap signals.
+ * window. CUR-015: in addition to the row count, the per-row thread ids are
+ * included so a same-length DOM swap (e.g. Gmail replacing one thread with
+ * another during virtualization) is detected and resets the window.
  */
 function listFingerprintForStability(list: HTMLElement): string {
-  return `children=${String(list.childElementCount)};textLen=${String(list.textContent.length)}`;
+  const rows = list.querySelectorAll<HTMLElement>('[role="listitem"], tr[role="row"]');
+  const ids: string[] = [];
+  for (const row of rows) {
+    const id =
+      row.getAttribute("data-thread-id") ??
+      row.getAttribute("data-legacy-thread-id") ??
+      row.getAttribute("id");
+    ids.push(id ?? "?");
+  }
+  return `count=${String(rows.length)};ids=${ids.join(",")}`;
 }
 
 // Async to match the controller's effect contract and to allow the stability
@@ -61,8 +72,11 @@ export async function analyzeCurrentInbox(signal: AbortSignal): Promise<Analysis
   // requires no active Gmail selection before analysis/search so that the
   // analyzer's read-only snapshot is not confused with a user's in-progress
   // selection. Selections rendered by this extension's own overlay are exempt.
+  // CUR-018: scope to [role="main"] so checkboxes outside the mail surface (the
+  // overlay, account/settings menus, chat, etc.) do not falsely trip the guard.
+  // Include native input[type=checkbox]:checked so legacy markup is covered too.
   const existingSelection = document.querySelector(
-    '[role="checkbox"][aria-checked="true"], [role="checkbox"][aria-checked="mixed"]',
+    '[role="main"] [role="checkbox"][aria-checked="true"], [role="main"] [role="checkbox"][aria-checked="mixed"], [role="main"] input[type="checkbox"]:checked',
   );
   if (existingSelection && !existingSelection.closest("#giso-extension-root")) {
     throwAppError(
@@ -75,7 +89,9 @@ export async function analyzeCurrentInbox(signal: AbortSignal): Promise<Analysis
     );
   }
 
-  const list = findMessageListElement();
+  // CUR-017: declare with `let` so a detached/replaced list can be re-resolved
+  // after the stability wait.
+  let list = findMessageListElement();
   if (!list) {
     throwAppError(appError("GISO-LIST-001", "noRows", "message list not found", true));
   }
@@ -85,10 +101,15 @@ export async function analyzeCurrentInbox(signal: AbortSignal): Promise<Analysis
   // Gmail rendering (lazy rows, virtualized reflow) can produce a partial or
   // reordered result. We poll a lightweight child-count fingerprint and reset
   // the window whenever it changes.
+  // CUR-016: bound the wait with a 10-second deadline so a churn-heavy DOM
+  // cannot hang analysis forever. If the deadline passes without stability we
+  // proceed anyway (the scan may be less accurate but won't block the user,
+  // who now also has a Cancel button on the analyzing view).
   const listForStability = list;
+  const deadline = performance.now() + 10_000;
   let lastFingerprint = listFingerprintForStability(listForStability);
   let stableSince = performance.now();
-  while (performance.now() - stableSince < 250) {
+  while (performance.now() - stableSince < 250 && performance.now() < deadline) {
     assertNotAborted(signal);
     // C-2: use the shared delay(), whose abort listener is removed on both the
     // timeout and abort paths. The previous hand-rolled Promise leaked its
@@ -101,6 +122,19 @@ export async function analyzeCurrentInbox(signal: AbortSignal): Promise<Analysis
     }
   }
   assertNotAborted(signal);
+
+  // CUR-017: Gmail may have replaced the list node during the stability window.
+  // If the captured node is now detached, re-resolve to the current list and
+  // scan that instead of a stale detached subtree.
+  if (!list.isConnected) {
+    const freshList = findMessageListElement();
+    if (!freshList) {
+      throwAppError(
+        appError("GISO-LIST-001", "noRows", "message list detached during analysis", true),
+      );
+    }
+    list = freshList;
+  }
 
   const rawRows = collectMessageRows(list);
   if (rawRows.length === 0) {

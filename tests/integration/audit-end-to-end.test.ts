@@ -6,10 +6,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { loadFixture } from "./fixture-loader";
 import { analyzeCurrentInbox } from "@/analyzer/inbox-analyzer";
 import { buildInboxSenderQuery } from "@/gmail/search-controller";
-import { createStore } from "@/app/store";
+import { createProductionStore } from "../helpers/production-store";
 import { createAppController } from "@/app/controller";
-import { reduceAppState } from "@/app/state-machine";
-import { initialState } from "@/app/initial-state";
 
 function installGmailLocation(hash = "#inbox"): void {
   const state = {
@@ -69,7 +67,7 @@ describe("AUDIT: controller analysis effect transitions cleanly", () => {
   });
 
   it("analyze() moves IDLE -> ANALYZING -> RESULTS_READY with no leftover state", async () => {
-    const store = createStore(initialState, reduceAppState);
+    const store = createProductionStore();
     const controller = createAppController(store);
     expect(store.getState().workflow).toBe("IDLE");
     await controller.analyze();
@@ -84,7 +82,7 @@ describe("AUDIT: controller analysis effect transitions cleanly", () => {
   });
 
   it("cancel after a non-running state is a no-op (no exception, no DOM click)", () => {
-    const store = createStore(initialState, reduceAppState);
+    const store = createProductionStore();
     const controller = createAppController(store);
     expect(() => {
       controller.cancel();

@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { reduceAppState } from "@/app/state-machine";
 import { initialState } from "@/app/initial-state";
-import { createStore } from "@/app/store";
+import { createProductionStore } from "../helpers/production-store";
 import { createAppController } from "@/app/controller";
 import { renderApp } from "@/ui/render";
 import { ensureOverlayHost } from "@/ui/overlay-host";
@@ -35,14 +35,6 @@ const analysis = (groups: SenderGroup[]): AnalysisResult => ({
   unresolvedEntries: [],
 });
 
-const acceptance = (s: typeof initialState) => [
-  s.workflow,
-  s.activeGroupId,
-  s.error?.code ?? "",
-  s.analysis !== null,
-  s.overlayVisible,
-];
-
 // ---- PROBE A: CONFIRM_SEARCH view actually renders the confirm button ----
 describe("ROUND2: CONFIRM_SEARCH renders confirm-search view (BUG-001)", () => {
   beforeEach(() => {
@@ -52,7 +44,7 @@ describe("ROUND2: CONFIRM_SEARCH renders confirm-search view (BUG-001)", () => {
   });
 
   it("shows the 'Suche starten' button and the exact query", () => {
-    const store = createStore(initialState, reduceAppState, acceptance);
+    const store = createProductionStore();
     const c = createAppController(store);
     const { shadow } = ensureOverlayHost();
     const g = group("a", "a@example.com");
@@ -72,7 +64,7 @@ describe("ROUND2: CONFIRM_SEARCH renders confirm-search view (BUG-001)", () => {
   });
 
   it("does NOT show the group list in CONFIRM_SEARCH", () => {
-    const store = createStore(initialState, reduceAppState, acceptance);
+    const store = createProductionStore();
     const c = createAppController(store);
     const { shadow } = ensureOverlayHost();
     const g = group("a", "a@example.com");

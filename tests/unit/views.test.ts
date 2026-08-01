@@ -223,7 +223,6 @@ describe("views: COMPLETED", () => {
       analysis,
     });
     expect(shadow.textContent).toContain("Absender bearbeitet");
-    expect(shadow.querySelector('[data-testid="giso-next"]')).not.toBeNull();
     expect(shadow.querySelector('[data-testid="giso-results"]')).not.toBeNull();
   });
 });

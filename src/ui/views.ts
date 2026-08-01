@@ -71,7 +71,7 @@ export function* renderView(
       yield* idleView(state, controller);
       return;
     case "ANALYZING":
-      yield* analyzingView(state);
+      yield* analyzingView(state, controller);
       return;
     case "RESULTS_READY":
       yield* resultsView(state, controller);
@@ -133,7 +133,10 @@ function* idleView(
   yield actions;
 }
 
-function* analyzingView(state: AppState): Generator<HTMLElement, void, unknown> {
+function* analyzingView(
+  state: AppState,
+  controller: AppController,
+): Generator<HTMLElement, void, unknown> {
   const p = document.createElement("p");
   p.className = "giso-status";
   const spinner = document.createElement("span");
@@ -142,6 +145,17 @@ function* analyzingView(state: AppState): Generator<HTMLElement, void, unknown> 
   p.append(spinner, de.analyzing);
   yield p;
   yield statusLine(state.diagnostics.at(-1)?.message ?? "");
+  // CUR-016: the analyzer is now bounded by a 10s deadline, but the user must
+  // still be able to cancel a long / stuck analysis. controller.cancel()
+  // aborts the in-flight analysis signal and returns to the previous view.
+  yield button(
+    "giso-cancel-analysis",
+    de.cancel,
+    () => {
+      controller.cancel();
+    },
+    "danger",
+  );
 }
 
 function filterAndSort(groups: readonly SenderGroup[], state: AppState): readonly SenderGroup[] {
@@ -256,6 +270,31 @@ function* resultsView(
   if (state.analysis.unresolvedEntries.length > 0) {
     yield* unresolvedSection(state);
   }
+
+  // CUR-025: the results view had no way to re-run the analysis or close the
+  // overlay. Both controls are link-style so they don't compete visually with
+  // the per-group primary actions.
+  const actions = document.createElement("div");
+  actions.className = "giso-actions";
+  actions.append(
+    button(
+      "giso-reanalyze",
+      de.analyzeInbox,
+      () => {
+        void controller.analyze();
+      },
+      "link",
+    ),
+    button(
+      "giso-close-results",
+      de.close,
+      () => {
+        controller.cancel();
+      },
+      "link",
+    ),
+  );
+  yield actions;
 }
 
 function errorCodeToMessageKey(code: string): string {
@@ -269,6 +308,14 @@ function errorCodeToMessageKey(code: string): string {
 function renderGroup(group: SenderGroup, controller: AppController): HTMLLIElement {
   const li = document.createElement("li");
   li.className = `giso-group giso-group--${group.status}`;
+  // CUR-024: every ready/done/error group row reuses the same per-action
+  // data-testid (giso-find-all / giso-ignore / giso-retry-group). Focus
+  // restoration (see render.ts) queries by data-testid and, on multiple
+  // matches, focuses the FIRST element in DOM order. This is acceptable for V1
+  // safe mode: only RESULTS_READY renders several groups at once, and there the
+  // user is never operating multiple groups simultaneously (each action drives a
+  // dedicated single-group workflow view). group.id is also stored as
+  // data-group-id for a future per-row focus fix if multi-group actions land.
   li.dataset["testid"] = "giso-group";
   li.dataset["groupId"] = group.id;
   const name = document.createElement("div");
@@ -448,18 +495,18 @@ function* completedView(
   yield detail;
   const actions = document.createElement("div");
   actions.className = "giso-actions";
+  // CUR-037: previously both "Nächsten Absender bearbeiten" and "Zur
+  // Ergebnisliste" called returnToResults() — the duplicate action was
+  // misleading. Keep only the result-list button, which is the real intent.
   actions.append(
     button(
-      "giso-next",
-      de.nextSender,
+      "giso-results",
+      de.resultList,
       () => {
         controller.returnToResults();
       },
       "primary",
     ),
-    button("giso-results", de.resultList, () => {
-      controller.returnToResults();
-    }),
   );
   yield actions;
 }
@@ -567,7 +614,7 @@ function* manualWorkflowView(
   }
   const title = document.createElement("p");
   title.className = "giso-status";
-  title.textContent = de.startSearch;
+  title.textContent = de.searchCompleted;
   yield title;
 
   if (state.expectedQuery) {
@@ -650,9 +697,13 @@ async function copyToClipboard(text: string): Promise<boolean> {
     document.body.append(textarea);
     try {
       textarea.select();
+      // CUR-027: execCommand("copy") returns false when the copy fails (e.g.
+      // insecure context, blocked clipboard). The legacy path previously
+      // reported success unconditionally. Honor the return value so the caller
+      // can give accurate feedback.
       // eslint-disable-next-line @typescript-eslint/no-deprecated -- legacy fallback path; execCommand is the only sync clipboard API available outside secure contexts.
-      document.execCommand("copy");
-      return true;
+      const success = document.execCommand("copy");
+      return success;
     } finally {
       textarea.remove();
     }

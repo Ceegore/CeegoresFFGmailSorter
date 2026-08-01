@@ -8,14 +8,11 @@ export async function delay(ms: number, signal: AbortSignal): Promise<void> {
     // the lifetime of the controller owning it. The `settled` guard makes
     // cleanup idempotent against a late abort racing with the timeout firing.
     let settled = false;
-    const timer = window.setTimeout(() => {
-      cleanup();
-      resolve();
-    }, ms);
+    let timer = -1;
     const onAbort = () => {
       if (settled) return;
       settled = true;
-      window.clearTimeout(timer);
+      if (timer !== -1) window.clearTimeout(timer);
       reject(new DOMException("Operation aborted", "AbortError"));
     };
     const cleanup = () => {
@@ -23,6 +20,17 @@ export async function delay(ms: number, signal: AbortSignal): Promise<void> {
       signal.removeEventListener("abort", onAbort);
     };
     signal.addEventListener("abort", onAbort, { once: true });
+    // CUR-033: recheck after registering the listener — an abort could fire
+    // between the top-of-function assertNotAborted and addEventListener. Do
+    // this BEFORE arming the timeout so no timer is leaked.
+    if (signal.aborted) {
+      cleanup();
+      throw new DOMException("Operation aborted", "AbortError");
+    }
+    timer = window.setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
   });
 }
 

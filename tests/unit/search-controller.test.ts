@@ -37,6 +37,31 @@ function installGmailSearchDom(onSubmit: () => void): {
   return { button, box };
 }
 
+/**
+ * Install a primary mail list inside [role="main"] so CUR-004's
+ * findMessageListElement() scoping resolves it. Each row carries a stable
+ * data-thread-id (so CUR-014's tightened looksLikeMessageRow() counts it) plus
+ * an opener anchor.
+ */
+function installMailList(rows = 1): HTMLElement {
+  const main = document.createElement("div");
+  main.setAttribute("role", "main");
+  const list = document.createElement("div");
+  list.setAttribute("role", "list");
+  for (let i = 0; i < rows; i += 1) {
+    const row = document.createElement("div");
+    row.setAttribute("role", "listitem");
+    row.setAttribute("data-thread-id", "r" + String(i));
+    const opener = document.createElement("a");
+    opener.setAttribute("href", "#inbox/r" + String(i));
+    row.append(opener);
+    list.append(row);
+  }
+  main.append(list);
+  document.body.append(main);
+  return main;
+}
+
 describe("search controller", () => {
   beforeEach(() => {
     Object.defineProperty(window, "location", {
@@ -72,12 +97,9 @@ describe("search controller", () => {
   it("returns ready evidence when results appear", async () => {
     installGmailSearchDom(() => {
       window.location.hash = "#search/from:x";
-      const list = document.createElement("div");
-      list.setAttribute("role", "list");
-      const row = document.createElement("div");
-      row.setAttribute("role", "listitem");
-      list.append(row);
-      document.body.append(list);
+      // CUR-004: results must live inside the primary mail list (scoped to
+      // [role="main"]) for findMessageListElement/mailListDetected to see them.
+      installMailList();
     });
     const ac = new AbortController();
     const evidence = await submitAndWaitUntilReady(
@@ -106,10 +128,15 @@ describe("search controller", () => {
   it("rejects related-only results", async () => {
     installGmailSearchDom(() => {
       window.location.hash = "#search/from:x";
+      // CUR-005: status text is only read from regions inside [role="main"]
+      // or a header, so the banner must live in the main surface.
+      const main = document.createElement("div");
+      main.setAttribute("role", "main");
       const banner = document.createElement("div");
       banner.setAttribute("role", "status");
       banner.textContent = "Ähnliche Ergebnisse";
-      document.body.append(banner);
+      main.append(banner);
+      document.body.append(main);
     });
     await expect(
       submitAndWaitUntilReady(
