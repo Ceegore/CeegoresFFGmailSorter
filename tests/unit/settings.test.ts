@@ -7,31 +7,27 @@ describe("validateSettings", () => {
     expect(validateSettings(null)).toEqual(DEFAULT_SETTINGS);
     expect(validateSettings("oops")).toEqual(DEFAULT_SETTINGS);
   });
-  it("drops unknown keys and clamps invalid structure to defaults", () => {
+  it("BUG-059: drops unknown keys (diagnosticsEnabled/autoOpenMoveMenu removed)", () => {
     expect(
       validateSettings({
         schemaVersion: 99,
         overlayPosition: { top: -1, right: "bad" },
         diagnosticsEnabled: true,
+        autoOpenMoveMenu: false,
         senderHistory: ["private@example.com"],
       }),
     ).toEqual({
       ...DEFAULT_SETTINGS,
-      diagnosticsEnabled: true,
     });
   });
   it("keeps valid overlay position", () => {
     const out = validateSettings({
       overlayPosition: { top: 120, right: 24 },
-      diagnosticsEnabled: false,
-      autoOpenMoveMenu: false,
     });
     expect(out.overlayPosition).toEqual({ top: 120, right: 24 });
-    expect(out.autoOpenMoveMenu).toBe(false);
   });
-  it("non-boolean flags fall back to defaults", () => {
-    const out = validateSettings({ diagnosticsEnabled: "yes", autoOpenMoveMenu: 1 });
-    expect(out.diagnosticsEnabled).toBe(false);
-    expect(out.autoOpenMoveMenu).toBe(true);
+  it("rejects negative positions (falls back to defaults)", () => {
+    const out = validateSettings({ overlayPosition: { top: -5, right: 10 } });
+    expect(out.overlayPosition).toEqual(DEFAULT_SETTINGS.overlayPosition);
   });
 });

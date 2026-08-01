@@ -35,17 +35,25 @@ function statusLine(text: string): HTMLParagraphElement {
   return p;
 }
 
+// BUG-022: resolve the userMessageKey to a translated German string. If the
+// key is unknown, show a safe generic message instead of the raw key.
+function resolveUserMessage(key: string): string {
+  const dict = de as Record<string, string>;
+  const text = dict[key];
+  return text ?? de.unsafeState;
+}
+
 function errorBlock(messageKey: string, code: string | undefined): HTMLElement {
   const div = document.createElement("div");
   div.className = "giso-error";
   div.setAttribute("role", "alert");
   const msg = document.createElement("p");
-  msg.textContent = messageKey;
+  msg.textContent = resolveUserMessage(messageKey);
   div.append(msg);
   if (code) {
     const c = document.createElement("span");
     c.className = "giso-error__code";
-    c.textContent = `Diagnose: ${code}`;
+    c.textContent = `${de.diagnostics}: ${code}`;
     div.append(c);
   }
   return div;
@@ -116,14 +124,8 @@ function* idleView(
     button("giso-close", de.close, () => {
       controller.cancel();
     }),
-    button(
-      "giso-diagnostics",
-      de.diagnostics,
-      () => {
-        controller.resetSession();
-      },
-      "link",
-    ),
+    // BUG-016: diagnostics button removed from V1 — the feature is not
+    // implemented, so showing a dead button is worse than omitting it.
   );
   yield actions;
 }

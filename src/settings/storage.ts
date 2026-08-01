@@ -16,16 +16,9 @@ export function validateSettings(value: unknown): Settings {
     Number.isFinite(right) &&
     right >= 0;
 
+  // BUG-059: only overlayPosition is validated/persisted.
   return {
     ...DEFAULT_SETTINGS,
-    diagnosticsEnabled:
-      typeof record["diagnosticsEnabled"] === "boolean"
-        ? record["diagnosticsEnabled"]
-        : DEFAULT_SETTINGS.diagnosticsEnabled,
-    autoOpenMoveMenu:
-      typeof record["autoOpenMoveMenu"] === "boolean"
-        ? record["autoOpenMoveMenu"]
-        : DEFAULT_SETTINGS.autoOpenMoveMenu,
     overlayPosition: validPosition ? { top, right } : DEFAULT_SETTINGS.overlayPosition,
   };
 }

@@ -114,7 +114,6 @@ describe("settings storage round-trip", () => {
     };
     const loaded = await loadSettings();
     expect(loaded.overlayPosition).toEqual({ top: 100, right: 20 });
-    expect(loaded.diagnosticsEnabled).toBe(true);
   });
   it("saveSettings validates before writing", async () => {
     const setMock = vi.fn(() => Promise.resolve());

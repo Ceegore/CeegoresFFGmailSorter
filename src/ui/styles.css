@@ -9,6 +9,7 @@
   --giso-border: #d8dee8;
   --giso-primary: #0b57d0;
   --giso-primary-hover: #0847ad;
+  --giso-primary-text: #ffffff;
   --giso-danger: #b3261e;
   --giso-warning: #8a4f00;
   --giso-success: #137333;
@@ -26,6 +27,7 @@
     --giso-border: #4a4d52;
     --giso-primary: #8ab4f8;
     --giso-primary-hover: #aecbfa;
+    --giso-primary-text: #202124;
     --giso-danger: #f28b82;
     --giso-warning: #fdd663;
     --giso-success: #81c995;
@@ -145,7 +147,7 @@
 .giso-btn--primary {
   background: var(--giso-primary);
   border-color: var(--giso-primary);
-  color: #fff;
+  color: var(--giso-primary-text);
 }
 .giso-btn--primary:hover:not(:disabled) {
   background: var(--giso-primary-hover);
