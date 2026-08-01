@@ -17,7 +17,7 @@ jobs:
       # Dependabot (.github/dependabot.yml) opens weekly PRs that surface the
       # resolved SHAs for each new release so this stays tractable.
       - uses: actions/checkout@v4.2.2
-      - uses: actions/setup-node@v4.3.0
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: 24.18.0
           cache: npm
