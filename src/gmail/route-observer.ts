@@ -30,6 +30,10 @@ export function observeRoutes(onRouteChange: () => void): RouteObserver {
         last = location.href;
         onRouteChange();
       }
+      // H-2: reset the burst bookkeeping alongside firstMutationAt so the next
+      // mutation starts a fresh burst instead of carrying stale counters.
+      burstStarted = now;
+      burstCount = 1;
       firstMutationAt = 0;
       return;
     }

@@ -4,6 +4,7 @@
 // used in V1's default path (kept attribute-driven for reviewability).
 import { assertNotAborted } from "@/shared/abort";
 import { appError, throwAppError } from "@/shared/errors";
+import { delay } from "@/shared/time";
 import {
   collectMessageRows,
   detectAccountSlot,
@@ -87,17 +88,10 @@ export async function analyzeCurrentInbox(signal: AbortSignal): Promise<Analysis
   let stableSince = performance.now();
   while (performance.now() - stableSince < 250) {
     assertNotAborted(signal);
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, 50);
-      signal.addEventListener(
-        "abort",
-        () => {
-          clearTimeout(timer);
-          resolve();
-        },
-        { once: true },
-      );
-    });
+    // C-2: use the shared delay(), whose abort listener is removed on both the
+    // timeout and abort paths. The previous hand-rolled Promise leaked its
+    // listener on the normal (timeout) path for the signal's lifetime.
+    await delay(50, signal);
     const currentFingerprint = listFingerprintForStability(listForStability);
     if (currentFingerprint !== lastFingerprint) {
       lastFingerprint = currentFingerprint;

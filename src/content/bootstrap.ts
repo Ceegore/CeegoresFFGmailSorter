@@ -95,6 +95,13 @@ export function bootstrap(): void {
       removeRuntimeListener?.();
       window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("pageshow", onPageShow);
+      // C-1: tear down the overlay's positioning listeners (notably the window
+      // resize listener added by wirePositioning) before the host is removed,
+      // otherwise they leak for the page lifetime.
+      const overlay = host.shadowRoot?.querySelector<HTMLElement>(".giso-overlay");
+      (
+        overlay as unknown as { __positioningCleanup?: () => void } | null
+      )?.__positioningCleanup?.();
       host.remove();
       const testBridge = globalThis as typeof globalThis & {
         __gisoController?: unknown;

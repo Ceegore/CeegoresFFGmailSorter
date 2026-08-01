@@ -95,8 +95,10 @@ purpose: Playwright mock-E2E (spec §59.4)
 
     <div role="main">
       <div class="toolbar" role="toolbar">
-        <input id="search" type="text" aria-label="Suche" placeholder="Suche" />
-        <button id="search-btn" type="button" aria-label="Suche">Suchen</button>
+        <div role="search">
+          <input id="search" type="text" aria-label="Suche" placeholder="Suche" />
+          <button id="search-btn" type="button" aria-label="Suche">Suchen</button>
+        </div>
         <label><input id="select-page" type="checkbox" /> Seite auswählen</label>
         <button id="move-btn" type="button">Verschieben nach</button>
       </div>

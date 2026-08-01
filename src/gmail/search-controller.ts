@@ -228,6 +228,11 @@ export async function submitAndWaitUntilReady(
         appError("GISO-SEARCH-BOX-001", "searchFailed", "search box not found on retry", true),
       );
     }
+    // H-3: re-set the query value before retrying submission. The retry path
+    // used to only re-resolve the box and repeat the submission strategy, so if
+    // anything had cleared or altered the input since the first attempt, the
+    // retry submitted an empty/stale query.
+    setNativeInputValue(retryBox, query);
     submitSearch(retryBox);
     return await waitForEvidence(
       query,

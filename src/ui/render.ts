@@ -127,17 +127,29 @@ function buildNarrowWarning(): HTMLElement {
  * never diverge, and (b) the user cannot drag before the load resolves. A
  * synchronous default-position placeholder is applied first to avoid a flash
  * of an unpositioned overlay.
+ *
+ * C-1: the teardown returned by wirePositioning (which owns the resize
+ * listener) is stored on the overlay so bootstrap's dispose path can invoke it
+ * — otherwise the listener leaks for the page lifetime.
+ * C-3: wirePositioning runs asynchronously, so the synchronous POSITIONED_FLAG
+ * guard cannot stop a late .then/.catch from wiring an overlay that has since
+ * been removed. An isConnected check at the top of each callback prevents a
+ * double-wire / wire-after-dispose.
  */
+type OverlayWithCleanup = HTMLElement & { __positioningCleanup?: () => void };
+
 function wireHandleOnce(overlay: HTMLElement): void {
   if (overlay.getAttribute(POSITIONED_FLAG) === "1") return;
   overlay.setAttribute(POSITIONED_FLAG, "1");
   applyPosition(overlay, DEFAULT_POSITION); // visual placeholder until loaded
   void loadPosition()
     .then((pos) => {
+      if (!overlay.isConnected) return;
       applyPosition(overlay, pos);
       const handle = overlay.querySelector<HTMLElement>("[data-testid='giso-move-handle']");
       if (handle) {
-        wirePositioning(
+        overlayCleanup(overlay)?.();
+        (overlay as OverlayWithCleanup).__positioningCleanup = wirePositioning(
           overlay,
           handle,
           (p) => {
@@ -148,12 +160,22 @@ function wireHandleOnce(overlay: HTMLElement): void {
       }
     })
     .catch(() => {
+      if (!overlay.isConnected) return;
       applyPosition(overlay, DEFAULT_POSITION);
       const handle = overlay.querySelector<HTMLElement>("[data-testid='giso-move-handle']");
       if (handle) {
-        wirePositioning(overlay, handle, (p) => {
-          void persistPosition(p);
-        });
+        overlayCleanup(overlay)?.();
+        (overlay as OverlayWithCleanup).__positioningCleanup = wirePositioning(
+          overlay,
+          handle,
+          (p) => {
+            void persistPosition(p);
+          },
+        );
       }
     });
+}
+
+function overlayCleanup(overlay: HTMLElement): (() => void) | undefined {
+  return (overlay as OverlayWithCleanup).__positioningCleanup;
 }
