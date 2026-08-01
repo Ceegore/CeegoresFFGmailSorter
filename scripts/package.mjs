@@ -6,6 +6,16 @@ import { promisify } from "node:util";
 
 const exec = promisify(execFile);
 const releaseDir = resolve("artifacts/release");
+
+// ITI-063: rebuild dist from source before packaging so a stale/older dist can
+// never be bundled into a release artifact. build.mjs resolves its own root via
+// import.meta.dirname, so running it from the project root reproduces a clean
+// dist identical to `npm run build`.
+console.log("Building fresh dist...");
+await exec(process.execPath, [resolve("scripts/build.mjs")], {
+  shell: false,
+});
+
 await rm(releaseDir, { recursive: true, force: true });
 await mkdir(releaseDir, { recursive: true });
 const webExt = resolve(
@@ -17,7 +27,10 @@ await exec(
   webExt,
   ["build", "--source-dir", "dist", "--artifacts-dir", releaseDir, "--overwrite-dest"],
   {
-    shell: false,
+    // C-1: On Windows the resolved binary is web-ext.cmd, which requires a
+    // shell to spawn (Node refuses to execute .cmd/.bat files with shell:false).
+    // git is a real executable so its call below keeps shell:false.
+    shell: true,
   },
 );
 await exec(

@@ -11,7 +11,9 @@ export const gmailTextPatterns = {
     ],
     allSelected: [/alle .* ausgewählt/i],
     deselect: [/auswahl aufheben/i, /keine auswählen/i],
-    move: [/^verschieben nach$/i, /^verschieben$/i, /in .* verschieben/i, /verschieben nach/iu],
+    // M-3: the unanchored /verschieben nach/iu subsumes the former
+    // /^verschieben nach$/i, which was redundant and could never match alone.
+    move: [/^verschieben$/i, /in .* verschieben/i, /verschieben nach/iu],
     createNew: [/^neu erstellen$/i, /^neues label/i],
     undo: [/rückgängig/iu],
     loading: [/wird geladen/i, /laden/i],

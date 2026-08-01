@@ -17,19 +17,29 @@ export function bootstrap(): void {
 
   try {
     const { host, shadow } = ensureOverlayHost();
-    const store = createStore(initialState, reduceAppState, (s) => [
-      s.workflow,
-      s.activeGroupId,
-      s.error?.code ?? "",
-      s.analysis !== null,
-      s.overlayVisible,
-      s.expectedQuery ?? "",
-      s.filter,
-      s.sort,
-      s.activeGroupId
-        ? (s.analysis?.groups.find((g) => g.id === s.activeGroupId)?.status ?? "")
-        : "",
-    ]);
+    const store = createStore(initialState, reduceAppState, (s) => {
+      // ITI-041: the snapshot must react to ANY group status change, not just the
+      // active group's. Ignoring a non-active group mutates that group's status
+      // without touching the active one, so a snapshot that only watched the
+      // active group would report accepted=false (no real transition). Including
+      // a digest of every group's status makes ignore/restore of any group an
+      // accepted transition, so the controller's effect layer runs.
+      const groupsDigest = s.analysis?.groups.map((g) => `${g.id}:${g.status}`).join(",") ?? "";
+      return [
+        s.workflow,
+        s.activeGroupId,
+        s.error?.code ?? "",
+        s.analysis !== null,
+        s.overlayVisible,
+        s.expectedQuery ?? "",
+        s.filter,
+        s.sort,
+        s.activeGroupId
+          ? (s.analysis?.groups.find((g) => g.id === s.activeGroupId)?.status ?? "")
+          : "",
+        groupsDigest,
+      ];
+    });
     const controller = createAppController(store);
     const unsubscribe = store.subscribe((state) => {
       renderApp(shadow, state, controller);
@@ -48,6 +58,18 @@ export function bootstrap(): void {
       void controller.handleBackgroundMessage("SHOW_OVERLAY");
     };
     renderApp(shadow, store.getState(), controller);
+
+    // ITI-050: the narrow-viewport warning is computed during render from
+    // window.innerWidth, so a resize that crosses the 720px threshold needs to
+    // re-render the current state. Debounce so a drag doesn't thrash the DOM.
+    let resizeTimer: number | null = null;
+    const onResize = (): void => {
+      if (resizeTimer !== null) window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        renderApp(shadow, store.getState(), controller);
+      }, 200);
+    };
+    window.addEventListener("resize", onResize);
 
     const routeObserver = observeRoutes(() => {
       // BUG-035: a route change invalidates the session atomically. The
@@ -93,6 +115,8 @@ export function bootstrap(): void {
       routeObserver.dispose();
       unsubscribe();
       removeRuntimeListener?.();
+      window.removeEventListener("resize", onResize);
+      if (resizeTimer !== null) window.clearTimeout(resizeTimer);
       window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("pageshow", onPageShow);
       // C-1: tear down the overlay's positioning listeners (notably the window

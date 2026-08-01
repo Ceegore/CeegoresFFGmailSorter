@@ -18,7 +18,10 @@ export interface Store<S, E> {
 type AcceptanceKey = string;
 
 function snapshotKey(fields: readonly unknown[]): AcceptanceKey {
-  return fields.map((f) => String(f)).join("|");
+  // ITI-042: a `|`-join can collide when field values themselves contain `|`
+  // (e.g. group ids or messages). JSON.stringify delimits fields structurally
+  // and is unambiguous for the heterogeneous field list we feed it.
+  return JSON.stringify(fields);
 }
 
 export function createStore<S, E>(

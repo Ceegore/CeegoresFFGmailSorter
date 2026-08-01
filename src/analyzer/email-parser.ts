@@ -72,7 +72,14 @@ export function parseEmailCandidate(value: string): Result<ParsedEmailCandidate,
 
   const rawMatches = [...normalizedValue.matchAll(EMAIL_FIND_PATTERN)].map((match) => ({
     raw: match[0],
-    index: match.index,
+    // H-1: defensively fall back to -1 if index is somehow absent. The current
+    // TS lib types RegExpMatchArray.index as `number`, so without the disable
+    // `no-unnecessary-condition` would flag the `??`; we keep the guard anyway
+    // because the runtime contract is "index may be undefined" (ES2018 matchAll
+    // polyfills and the spec's IteratorResult both permit it) and the downstream
+    // slice arithmetic would silently produce a wrong display name otherwise.
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    index: match.index ?? -1,
   }));
   const normalizedMatches = rawMatches
     .map((match) => ({ ...match, normalized: normalizeEmail(match.raw) }))

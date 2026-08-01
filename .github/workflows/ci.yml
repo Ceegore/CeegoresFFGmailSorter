@@ -30,6 +30,10 @@ jobs:
       # BUG-060: spec hash is the first gate — before any build or test.
       - run: npm run verify:spec-hash
       - run: npm run verify
+      # ITI-064: run the packaging step in CI so a broken release pipeline is
+      # caught before tagging. package.mjs rebuilds dist and web-ext builds the
+      # xpi, so this also exercises the full artifact path.
+      - run: npm run package
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4.6.2

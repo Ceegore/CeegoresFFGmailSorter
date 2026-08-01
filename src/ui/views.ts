@@ -581,7 +581,18 @@ function* manualWorkflowView(
       "giso-copy-query",
       de.copyQuery,
       () => {
-        void copyToClipboard(state.expectedQuery ?? "");
+        // ITI-049: show success/failure feedback on the button itself. copyBtn is
+        // assigned before this closure can fire (the click listener is added
+        // during button() but only invoked later by a user gesture), so the
+        // reference is safe.
+        void copyToClipboard(state.expectedQuery ?? "").then((ok) => {
+          copyBtn.textContent = ok ? de.copied : de.copyQuery;
+          if (ok) {
+            window.setTimeout(() => {
+              copyBtn.textContent = de.copyQuery;
+            }, 2000);
+          }
+        });
       },
       "link",
     );
@@ -616,14 +627,15 @@ function* manualWorkflowView(
   yield actions;
 }
 
-async function copyToClipboard(text: string): Promise<void> {
+async function copyToClipboard(text: string): Promise<boolean> {
   // BUG-042: prefer the async Clipboard API, but fall back to a hidden textarea
   // + document.execCommand("copy") when it is unavailable or rejects (non-HTTPS
   // context, missing permissions, Firefox). Never throw: if both paths fail the
   // visible query text still lets the user copy manually.
+  // ITI-049: report success/failure so the caller can give the user feedback.
   try {
     await navigator.clipboard.writeText(text);
-    return;
+    return true;
   } catch {
     // fall through to the legacy path
   }
@@ -640,10 +652,12 @@ async function copyToClipboard(text: string): Promise<void> {
       textarea.select();
       // eslint-disable-next-line @typescript-eslint/no-deprecated -- legacy fallback path; execCommand is the only sync clipboard API available outside secure contexts.
       document.execCommand("copy");
+      return true;
     } finally {
       textarea.remove();
     }
   } catch {
     /* clipboard may be unavailable; the query text remains visible to copy manually */
+    return false;
   }
 }

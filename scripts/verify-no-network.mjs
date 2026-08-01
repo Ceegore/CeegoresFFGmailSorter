@@ -1,4 +1,5 @@
 import { readFile, readdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 const forbidden = [
@@ -24,7 +25,11 @@ async function walk(dir) {
   return result;
 }
 
-const roots = ["src", "dist"];
+// M-2: dist may not exist yet (e.g. running this gate pre-build or in a
+// source-only checkout). readdir would throw ENOENT and abort the whole gate,
+// masking any src-side violations. Only include dist when it actually exists.
+const roots = ["src"];
+if (existsSync("dist")) roots.push("dist");
 const failures = [];
 for (const root of roots) {
   for (const file of await walk(root)) {

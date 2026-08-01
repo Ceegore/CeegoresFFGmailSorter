@@ -21,6 +21,12 @@ export interface AnalyzeResult {
   readonly result: AnalysisResult;
 }
 
+// H-2: Use a monotonically increasing counter for the run id instead of
+// Date.now(). Two analyses started within the same millisecond would otherwise
+// share a run id, which collides the weak fingerprint namespace (the run id is
+// mixed into row fingerprints) and can mask duplicate-row detection.
+let analysisRunCounter = 0;
+
 /**
  * ITI-013: a simple count-based fingerprint of the message list's children used
  * only to detect DOM churn during the stability window. This is intentionally a
@@ -37,7 +43,7 @@ function listFingerprintForStability(list: HTMLElement): string {
 export async function analyzeCurrentInbox(signal: AbortSignal): Promise<AnalysisResult> {
   assertNotAborted(signal);
   const startedAt = Date.now();
-  const analysisRunId = String(startedAt);
+  const analysisRunId = `run-${String(++analysisRunCounter)}`;
 
   const shell = detectShell();
   if (!shell.ok || !shell.value) {
