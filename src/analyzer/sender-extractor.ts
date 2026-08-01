@@ -23,21 +23,39 @@ const HIGH_SOURCES: ReadonlySet<SenderIdentity["source"]> = new Set([
 function readAttributeSources(row: HTMLElement): SenderObservation[] {
   const obs: SenderObservation[] = [];
 
-  // BUG-012: high-confidence sources (email, data-hovercard-id, data-email)
-  // are read from the full row — these are sender-specific attributes that
-  // don't appear on subject/attachment elements.
-  const emailAttr =
-    row.getAttribute("email") ?? row.querySelector("[email]")?.getAttribute("email");
-  if (emailAttr) obs.push(observe("email-attribute", emailAttr));
+  // ITI-015: collect ALL sender-specific attribute observations, not just the
+  // first. Multi-participant threads render multiple sender elements, and
+  // reading only the first match (via querySelector) could misattribute the
+  // row to a single participant. querySelectorAll gathers every observation so
+  // the existing conflict detection (uniqueEmails.size > 1) fires correctly.
+  // BUG-012: these attributes are sender-specific and do not appear on
+  // subject/attachment elements.
 
-  const hover =
-    row.getAttribute("data-hovercard-id") ??
-    row.querySelector("[data-hovercard-id]")?.getAttribute("data-hovercard-id");
+  // Email attribute
+  const rowEmail = row.getAttribute("email");
+  if (rowEmail) {
+    obs.push(observe("email-attribute", rowEmail));
+  }
+  for (const el of row.querySelectorAll<HTMLElement>("[email]")) {
+    const val = el.getAttribute("email");
+    if (val) obs.push(observe("email-attribute", val));
+  }
+
+  // Hovercard ID
+  const hover = row.getAttribute("data-hovercard-id");
   if (hover) obs.push(observe("hovercard-id", hover));
+  for (const el of row.querySelectorAll<HTMLElement>("[data-hovercard-id]")) {
+    const val = el.getAttribute("data-hovercard-id");
+    if (val) obs.push(observe("hovercard-id", val));
+  }
 
-  const dataEmail =
-    row.getAttribute("data-email") ?? row.querySelector("[data-email]")?.getAttribute("data-email");
+  // Data-email
+  const dataEmail = row.getAttribute("data-email");
   if (dataEmail) obs.push(observe("data-email", dataEmail));
+  for (const el of row.querySelectorAll<HTMLElement>("[data-email]")) {
+    const val = el.getAttribute("data-email");
+    if (val) obs.push(observe("data-email", val));
+  }
 
   // BUG-012: title and aria-label are LOWER-confidence sources. Reading the
   // first arbitrary [title] or [aria-label] descendant can pick up the subject,

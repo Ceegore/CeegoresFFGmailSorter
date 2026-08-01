@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { loadFixture, setRoute } from "./fixture-loader";
 import { analyzeCurrentInbox } from "@/analyzer/inbox-analyzer";
 import { detectCurrentView, detectShell, findMessageListElement } from "@/gmail/dom-detectors";
+import { toAppError } from "@/shared/errors";
 
 /** Mutable location stub the detectors read through window.location. */
 function installGmailLocation(hash = "#inbox"): void {
@@ -96,5 +97,44 @@ describe("view detection blocks analysis outside inbox", () => {
       },
     });
     expect(detectShell().ok).toBe(false);
+  });
+});
+
+describe("ITI-014: analysis is rejected when Gmail has an active selection", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    installGmailLocation("#inbox");
+    loadFixture("gmail-de-inbox-light.html");
+    setRoute("#inbox");
+  });
+
+  it("rejects analysis when a row checkbox is checked", async () => {
+    const checked = document.createElement("div");
+    checked.setAttribute("role", "checkbox");
+    checked.setAttribute("aria-checked", "true");
+    document.body.append(checked);
+    const err = await analyzeCurrentInbox(new AbortController().signal).catch((e: unknown) => e);
+    expect(toAppError(err).code).toBe("GISO-SELECTION-CONFLICT-001");
+  });
+
+  it("rejects analysis when a row checkbox is in the mixed (indeterminate) state", async () => {
+    const mixed = document.createElement("div");
+    mixed.setAttribute("role", "checkbox");
+    mixed.setAttribute("aria-checked", "mixed");
+    document.body.append(mixed);
+    const err = await analyzeCurrentInbox(new AbortController().signal).catch((e: unknown) => e);
+    expect(toAppError(err).code).toBe("GISO-SELECTION-CONFLICT-001");
+  });
+
+  it("ignores selections rendered inside the extension's own overlay root", async () => {
+    const root = document.createElement("div");
+    root.id = "giso-extension-root";
+    const checked = document.createElement("div");
+    checked.setAttribute("role", "checkbox");
+    checked.setAttribute("aria-checked", "true");
+    root.append(checked);
+    document.body.append(root);
+    const result = await analyzeCurrentInbox(new AbortController().signal);
+    expect(result.rowCount).toBeGreaterThan(0);
   });
 });

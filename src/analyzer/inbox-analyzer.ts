@@ -44,6 +44,24 @@ export async function analyzeCurrentInbox(signal: AbortSignal): Promise<Analysis
     throwAppError(appError("GISO-VIEW-NOT-INBOX-001", "notInbox", "not an inbox view", true));
   }
 
+  // ITI-014: reject analysis if Gmail already has an active selection. The spec
+  // requires no active Gmail selection before analysis/search so that the
+  // analyzer's read-only snapshot is not confused with a user's in-progress
+  // selection. Selections rendered by this extension's own overlay are exempt.
+  const existingSelection = document.querySelector(
+    '[role="checkbox"][aria-checked="true"], [role="checkbox"][aria-checked="mixed"]',
+  );
+  if (existingSelection && !existingSelection.closest("#giso-extension-root")) {
+    throwAppError(
+      appError(
+        "GISO-SELECTION-CONFLICT-001",
+        "unsafeState",
+        "Gmail has an active selection; clear it before analyzing",
+        true,
+      ),
+    );
+  }
+
   const list = findMessageListElement();
   if (!list) {
     throwAppError(appError("GISO-LIST-001", "noRows", "message list not found", true));

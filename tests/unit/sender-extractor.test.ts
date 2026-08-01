@@ -114,4 +114,40 @@ describe("extractSenderFromRow", () => {
     expect(s.normalizedEmail).toBe("a@example.com");
     expect(s.displayName).toBe("Beta");
   });
+
+  it("ITI-015: multi-participant thread with two distinct sender elements => conflict", () => {
+    // ITI-015: a thread with multiple participants renders more than one sender
+    // element. Previously only the first match was read (querySelector), so the
+    // row was misattributed to a single participant. Now every [email] is read
+    // and the conflict guard (uniqueEmails.size > 1) fires correctly.
+    const first = span({ email: "alice@example.com" }, "Alice");
+    const second = span({ email: "bob@example.com" }, "Bob");
+    const r = row({}, first);
+    r.append(second);
+    const s = extractSenderFromRow(r);
+    expect(s.confidence).toBe("unresolved");
+    expect(s.diagnostics).toContain("GISO-SENDER-CONFLICT-001");
+  });
+
+  it("ITI-015: same email repeated across multiple sender elements => resolved", () => {
+    // Two sender elements carrying the SAME address must NOT be treated as a
+    // conflict (e.g. one in the avatar, one in the name span).
+    const first = span({ email: "news@example.com" }, "News");
+    const second = span({ email: "news@example.com" }, "News");
+    const r = row({}, first);
+    r.append(second);
+    const s = extractSenderFromRow(r);
+    expect(s.normalizedEmail).toBe("news@example.com");
+    expect(s.confidence).toBe("high");
+  });
+
+  it("ITI-015: multiple distinct data-hovercard-id sources => conflict", () => {
+    const first = span({ "data-hovercard-id": "billing@example.org" }, "A");
+    const second = span({ "data-hovercard-id": "sales@example.org" }, "B");
+    const r = row({}, first);
+    r.append(second);
+    const s = extractSenderFromRow(r);
+    expect(s.confidence).toBe("unresolved");
+    expect(s.diagnostics).toContain("GISO-SENDER-CONFLICT-001");
+  });
 });

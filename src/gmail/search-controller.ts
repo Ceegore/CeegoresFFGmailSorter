@@ -32,20 +32,40 @@ export function setNativeInputValue(input: HTMLInputElement, value: string): voi
 }
 
 export function findSearchBox(): HTMLInputElement | null {
-  const candidates = document.querySelectorAll<HTMLInputElement>(
-    'input[role="searchbox"], input[type="text"], input[type="search"]',
+  // ITI-008: Prefer the search box inside a [role="search"] landmark (Gmail's
+  // main search). This avoids matching Chat/Spaces/Contacts search controls
+  // that live elsewhere in the document.
+  const inSearchLandmark = document.querySelector<HTMLInputElement>(
+    '[role="search"] input[type="text"], [role="search"] input[type="search"], [role="search"] input[role="searchbox"]',
   );
-  for (const input of candidates) {
+  if (inSearchLandmark) return inSearchLandmark;
+  // Fallback: a labelled text input in the header area.
+  const headerInputs = document.querySelectorAll<HTMLInputElement>(
+    'header input[type="text"], [role="banner"] input[type="text"]',
+  );
+  for (const input of headerInputs) {
     const label = input.getAttribute("aria-label") ?? "";
     if (/search|suche/iu.test(label)) return input;
   }
-  const inForm = document.querySelector<HTMLInputElement>('[role="search"] input');
-  return inForm;
+  return null;
 }
 
 export function findSearchSubmitButton(): HTMLElement | null {
-  const buttons = document.querySelectorAll<HTMLElement>('[role="button"], button');
-  for (const btn of buttons) {
+  // ITI-008: Prefer a submit button inside the [role="search"] landmark, so we
+  // never click a button belonging to Chat/Spaces/Contacts search controls.
+  const searchLandmark = document.querySelector('[role="search"]');
+  if (searchLandmark) {
+    const buttons = searchLandmark.querySelectorAll<HTMLElement>('[role="button"], button');
+    for (const btn of buttons) {
+      const label = `${btn.getAttribute("aria-label") ?? ""} ${btn.textContent || ""}`;
+      if (/search|suchen|suche/iu.test(label)) return btn;
+    }
+  }
+  // Fallback: search-labelled button in the header.
+  const headerButtons = document.querySelectorAll<HTMLElement>(
+    'header [role="button"], header button, [role="banner"] [role="button"], [role="banner"] button',
+  );
+  for (const btn of headerButtons) {
     const label = `${btn.getAttribute("aria-label") ?? ""} ${btn.textContent || ""}`;
     if (/search|suchen|suche/iu.test(label)) return btn;
   }
