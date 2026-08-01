@@ -159,7 +159,7 @@ export function reduceAppState(state: AppState, event: AppEvent): AppState {
     case "SET_SORT":
       return { ...state, sort: event.value };
     case "START_ANALYSIS":
-      return ["IDLE", "RESULTS_READY"].includes(state.workflow)
+      return ["IDLE", "RESULTS_READY", "ERROR"].includes(state.workflow)
         ? {
             ...state,
             // BUG-040: clear the previous analysis immediately so a failed

@@ -182,9 +182,10 @@ function* resultsView(
 
   const summary = document.createElement("p");
   summary.className = "giso-hint";
-  summary.textContent = `${String(state.analysis.rowCount)} Einträge geprüft · ${String(
-    state.analysis.groups.filter((g) => g.status !== "ignored").length,
-  )} wiederkehrende Absender · ${String(state.analysis.unresolvedCount)} nicht eindeutig`;
+  const recurringCount = state.analysis.groups.filter((g) => g.status !== "ignored").length;
+  summary.textContent = `${String(state.analysis.rowCount)} ${de.entriesChecked} · ${String(
+    recurringCount,
+  )} ${de.recurringSenders} · ${String(state.analysis.unresolvedCount)} ${de.notUnambiguous}`;
   yield summary;
 
   // Toolbar: filter + sort
@@ -278,7 +279,7 @@ function renderGroup(group: SenderGroup, controller: AppController): HTMLLIEleme
     done.textContent = de.senderProcessed;
     actions.append(done);
   } else if (group.status === "error" && group.lastErrorCode) {
-    actions.append(errorBlock(group.lastErrorCode, group.lastErrorCode));
+    actions.append(errorBlock("moveMenuFailed", group.lastErrorCode));
   }
   li.append(name, email, badge, actions);
   return li;
@@ -402,9 +403,7 @@ function* completedView(
   yield title;
   const detail = document.createElement("p");
   detail.className = "giso-hint";
-  detail.textContent = group
-    ? `${group.primaryDisplayName} wurde als erledigt markiert.`
-    : de.markDone;
+  detail.textContent = group ? `${group.primaryDisplayName} ${de.groupMarkedDone}` : de.markDone;
   yield detail;
   const actions = document.createElement("div");
   actions.className = "giso-actions";
@@ -577,8 +576,29 @@ function* manualWorkflowView(
 }
 
 async function copyToClipboard(text: string): Promise<void> {
+  // BUG-042: prefer the async Clipboard API, but fall back to a hidden textarea
+  // + document.execCommand("copy") when it is unavailable or rejects (non-HTTPS
+  // context, missing permissions, Firefox). Never throw: if both paths fail the
+  // visible query text still lets the user copy manually.
   try {
     await navigator.clipboard.writeText(text);
+    return;
+  } catch {
+    // fall through to the legacy path
+  }
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    // Move off-screen so the temporary control is never visible.
+    textarea.style.position = "fixed";
+    textarea.style.top = "0";
+    textarea.style.left = "-9999px";
+    document.body.append(textarea);
+    textarea.select();
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- legacy fallback path; execCommand is the only sync clipboard API available outside secure contexts.
+    document.execCommand("copy");
+    textarea.remove();
   } catch {
     /* clipboard may be unavailable; the query text remains visible to copy manually */
   }

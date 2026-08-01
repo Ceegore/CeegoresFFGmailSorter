@@ -79,6 +79,7 @@ describe("trySelectAllMatches", () => {
     document.body.append(banner);
     banner.addEventListener("click", () => {
       const ack = document.createElement("div");
+      ack.setAttribute("role", "status");
       ack.textContent = "Alle 5 Unterhaltungen ausgewählt";
       document.body.append(ack);
     });
@@ -141,6 +142,7 @@ describe("single-page proof and helpers", () => {
 
   it("allMatchesSelected detects explicit all-selected text", () => {
     const div = document.createElement("div");
+    div.setAttribute("role", "status");
     div.textContent = "All 12 conversations selected";
     document.body.append(div);
     expect(allMatchesSelected()).toBe(true);

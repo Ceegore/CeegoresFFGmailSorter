@@ -19,15 +19,16 @@ export function clampPosition(
   viewportWidth = window.innerWidth,
   viewportHeight = window.innerHeight,
 ): Position {
-  const overlayWidth = 380;
   const overlayHeight = Math.min(viewportHeight - 112, viewportHeight);
   const maxTop = Math.max(0, viewportHeight - MIN_VISIBLE_HEADER_PX);
-  const maxRight = Math.max(0, viewportWidth - overlayWidth + (viewportWidth - overlayWidth));
   const top = Math.min(Math.max(0, pos.top), maxTop);
-  // right is the distance from the right edge; keep >= 0 and ensure the header
-  // handle (left side) stays at least MIN_VISIBLE_HEADER_PX inside the viewport.
-  const minRight = -(viewportWidth - MIN_VISIBLE_HEADER_PX);
-  const right = Math.min(Math.max(minRight, pos.right), Math.max(0, maxRight));
+  // right is the CSS distance from the right edge: 0 = overlay at the right
+  // edge, larger values push it left. minRight keeps the overlay from leaving
+  // the right edge; maxRight lets it slide left until at least
+  // MIN_VISIBLE_HEADER_PX of the header remains visible on the right.
+  const minRight = 0;
+  const maxRight = Math.max(0, viewportWidth - MIN_VISIBLE_HEADER_PX);
+  const right = Math.min(Math.max(minRight, pos.right), maxRight);
   void overlayHeight;
   return { top, right };
 }
@@ -76,6 +77,16 @@ export function wirePositioning(
     }
     onPersist(current);
   };
+  // BUG-012: pointercancel fires when the drag is interrupted (e.g. scroll,
+  // OS-level gesture, touch stolen). Reset dragStart WITHOUT persisting so the
+  // overlay stays at its current visual position rather than snapping back.
+  const onPointerCancel = (): void => {
+    dragStart = null;
+  };
+  // lostpointercapture can fire if capture is revoked; abandon the drag too.
+  const onLostPointerCapture = (): void => {
+    dragStart = null;
+  };
   const onKeyDown = (event: KeyboardEvent): void => {
     const step = event.shiftKey ? NUDGE_PX_FAST : NUDGE_PX;
     let next: Position;
@@ -110,6 +121,8 @@ export function wirePositioning(
   handle.addEventListener("pointerdown", onPointerDown);
   handle.addEventListener("pointermove", onPointerMove);
   handle.addEventListener("pointerup", onPointerUp);
+  handle.addEventListener("pointercancel", onPointerCancel);
+  handle.addEventListener("lostpointercapture", onLostPointerCapture);
   handle.addEventListener("keydown", onKeyDown);
   handle.tabIndex = 0;
 
@@ -117,6 +130,8 @@ export function wirePositioning(
     handle.removeEventListener("pointerdown", onPointerDown);
     handle.removeEventListener("pointermove", onPointerMove);
     handle.removeEventListener("pointerup", onPointerUp);
+    handle.removeEventListener("pointercancel", onPointerCancel);
+    handle.removeEventListener("lostpointercapture", onLostPointerCapture);
     handle.removeEventListener("keydown", onKeyDown);
   };
 }

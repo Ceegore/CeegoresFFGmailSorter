@@ -14,7 +14,8 @@ export function validateSettings(value: unknown): Settings {
     top >= 0 &&
     typeof right === "number" &&
     Number.isFinite(right) &&
-    right >= 0;
+    right >= -2000 &&
+    right <= 5000;
 
   // BUG-059: only overlayPosition is validated/persisted.
   return {

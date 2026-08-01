@@ -5,8 +5,18 @@ browser.action.onClicked.addListener((tab) => {
   void handleActionClick(tab);
 });
 
-async function handleActionClick(tab: { readonly id?: number | undefined }): Promise<void> {
+async function handleActionClick(tab: {
+  readonly id?: number | undefined;
+  readonly url?: string | undefined;
+}): Promise<void> {
   if (typeof tab.id !== "number") return;
+  // BUG-014: only message the content script when the active tab is Gmail.
+  // Otherwise open Gmail in a new tab directly, skipping the sendMessage
+  // attempt (which would fail/throw on non-Gmail pages).
+  if (!tab.url?.startsWith("https://mail.google.com")) {
+    await browser.tabs.create({ url: GMAIL_HOME_URL });
+    return;
+  }
   const message: BackgroundToContentMessage = { type: "TOGGLE_OVERLAY" };
 
   let rawResponse: unknown;

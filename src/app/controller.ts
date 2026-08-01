@@ -7,6 +7,7 @@ import { appError, GisoError } from "@/shared/errors";
 import type { ContentResponse } from "@/shared/messages";
 import type { Store } from "@/app/store";
 import type { AppEvent } from "@/app/events";
+import { isCriticalWorkflow } from "@/app/state-machine";
 import type { AppState } from "@/shared/types";
 import { analyzeCurrentInbox } from "@/analyzer/inbox-analyzer";
 import { buildInboxSenderQuery, submitAndWaitUntilReady } from "@/gmail/search-controller";
@@ -94,11 +95,20 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
     } catch (error: unknown) {
       if (isAbortError(error)) return;
       // Preserve a structured GisoError's code/message; wrap anything else.
-      const wrapped =
-        error instanceof GisoError
-          ? error.app
-          : appError("GISO-INTERNAL-001", "internal", toTechnicalMessage(error), true);
-      dispatch({ type: "FAIL", error: wrapped });
+      if (error instanceof GisoError) {
+        dispatch({ type: "FAIL", error: error.app });
+        return;
+      }
+      const wrapped = appError("GISO-INTERNAL-001", "internal", toTechnicalMessage(error), true);
+      // BUG-008: for the generic wrap case, mark the active group as error +
+      // fail the workflow atomically so the group is never left stuck
+      // in-progress. Without an active group, fall back to plain FAIL.
+      const activeGroupId = store.getState().activeGroupId;
+      if (activeGroupId) {
+        dispatch({ type: "WORKFLOW_FAILED", groupId: activeGroupId, error: wrapped });
+      } else {
+        dispatch({ type: "FAIL", error: wrapped });
+      }
     }
   };
 
@@ -203,6 +213,14 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
         dispatch({ type: "RETURN_TO_RESULTS" });
         return;
       }
+      // COMPLETION_CONFIRMED is only legal from VERIFYING_COMPLETION. If the
+      // user is still choosing a target, detour through TARGET_CHOICE_DETECTED
+      // first. If neither, do nothing (avoid an illegal dispatch).
+      if (workflow === "WAITING_TARGET_SELECTION") {
+        dispatch({ type: "TARGET_CHOICE_DETECTED" });
+      } else if (workflow !== "VERIFYING_COMPLETION") {
+        return;
+      }
       const id = activeGroupId;
       dispatch({ type: "COMPLETION_CONFIRMED" });
       if (id) dispatch({ type: "MARK_GROUP_DONE", groupId: id });
@@ -210,13 +228,26 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
     cancel(): void {
       abortController?.abort();
       abortController = null;
+      const { workflow } = store.getState();
       // Per A.11: abort without completion restores the active group to ready.
       restoreActiveGroupToReady();
-      dispatch({ type: "CANCELLED" });
-      // BUG-050: CANCELLED is never a persistent usable state. Always follow
-      // with RETURN_TO_RESULTS — it lands on RESULTS_READY if analysis exists,
-      // or IDLE otherwise. Never leave the user stuck in CANCELLED.
-      dispatch({ type: "RETURN_TO_RESULTS" });
+      // CANCELLED is only legal from ANALYZING or a critical workflow. Guard it
+      // so the IDLE/terminal "Close" button does not emit illegal dispatches.
+      const analyseOrCritical = workflow === "ANALYZING" || isCriticalWorkflow(workflow);
+      let cancelled = false;
+      if (analyseOrCritical) {
+        cancelled = dispatch({ type: "CANCELLED" }).accepted;
+      }
+      const terminal = ["ERROR", "COMPLETED", "CANCELLED", "SEARCH_READY_MANUAL", "CONFIRM_SEARCH"];
+      // RETURN_TO_RESULTS is legal from terminal states. Follow CANCELLED with
+      // it so the user never gets stuck in CANCELLED. If CANCELLED was
+      // rejected (or skipped) and we are not already terminal, the workflow is
+      // IDLE/RESULTS_READY — just hide the overlay.
+      if (cancelled || terminal.includes(workflow)) {
+        dispatch({ type: "RETURN_TO_RESULTS" });
+      } else {
+        dispatch({ type: "TOGGLE_OVERLAY" });
+      }
     },
     resetSession(): void {
       abortController?.abort();

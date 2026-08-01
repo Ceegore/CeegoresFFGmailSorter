@@ -84,13 +84,19 @@ export async function selectCurrentPage(
 
   // BUG-006: postcondition requires the checkbox to become "checked" (not just
   // "mixed" or "any toolbar button exists"). Toolbar buttons exist pre-selection.
+  // BUG-040: a single corrective click is allowed for "mixed". Without this
+  // guard, a checkbox that stays "mixed" after the corrective click would be
+  // re-clicked every 50ms (re-click storm). wasState alone can't prevent this
+  // because it is captured once and never reflects the post-click state.
+  let mixedClickDone = false;
   while (performance.now() - started < timeoutMs) {
     assertNotAborted(signal);
     const nowState = getCheckboxState(control);
     if (nowState === "checked") return true;
-    // "mixed" is partial — click again to complete, then re-check.
-    if (nowState === "mixed" && wasState !== "mixed") {
+    // "mixed" is partial — click once more to complete, then re-check.
+    if (nowState === "mixed" && !mixedClickDone) {
       control.click();
+      mixedClickDone = true;
       await delay(200, signal);
       if (getCheckboxState(control) === "checked") return true;
     }
@@ -166,9 +172,25 @@ export function findSelectAllMatchesControl(): HTMLElement | null {
   return null;
 }
 
+/**
+ * BUG-009: read status text from scoped regions only. Never read
+ * document.body.textContent (includes email subjects/snippets → false positives).
+ */
+function readStatusText(): string {
+  const regions = document.querySelectorAll<HTMLElement>('[role="status"], [role="alert"]');
+  const parts: string[] = [];
+  for (const region of regions) {
+    if (region.closest("#giso-extension-root")) continue;
+    const label = region.getAttribute("aria-label") ?? "";
+    const text = region.textContent || "";
+    parts.push(`${label} ${text}`.trim());
+  }
+  return parts.join(" ");
+}
+
 /** True when Gmail explicitly shows all matches are selected (§54.2). */
 export function allMatchesSelected(): boolean {
-  const text = document.body.textContent || "";
+  const text = readStatusText();
   return (
     gmailTextPatterns.de.allSelected.some((p) => p.test(text)) ||
     gmailTextPatterns.en.allSelected.some((p) => p.test(text))

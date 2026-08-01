@@ -3,15 +3,26 @@ import { assertNotAborted } from "./abort";
 export async function delay(ms: number, signal: AbortSignal): Promise<void> {
   assertNotAborted(signal);
   await new Promise<void>((resolve, reject) => {
-    const timer = window.setTimeout(resolve, ms);
-    signal.addEventListener(
-      "abort",
-      () => {
-        window.clearTimeout(timer);
-        reject(new DOMException("Operation aborted", "AbortError"));
-      },
-      { once: true },
-    );
+    // BUG-041: the abort listener must be removed on the normal (timeout) path
+    // too, otherwise every completed delay leaks a listener on the signal for
+    // the lifetime of the controller owning it. The `settled` guard makes
+    // cleanup idempotent against a late abort racing with the timeout firing.
+    let settled = false;
+    const timer = window.setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      reject(new DOMException("Operation aborted", "AbortError"));
+    };
+    const cleanup = () => {
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
   });
 }
 

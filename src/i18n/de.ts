@@ -59,6 +59,7 @@ export const de = {
   gmailNotReady: "Gmail ist noch nicht vollständig geladen. Warte kurz und versuche es erneut.",
   unsafeState:
     "Die Gmail-Oberfläche konnte nicht sicher erkannt werden. Es wurde nichts angeklickt.",
+  internal: "Ein interner Fehler ist aufgetreten.",
   searchFailed: "Die globale Gmail-Suche konnte nicht sicher gestartet werden.",
   selectFailed: "Gmails Auswahlleiste wurde nicht gefunden.",
   selectAllHelp: "Wähle in Gmail alle Treffer dieser Suche aus und klicke danach auf „Fortsetzen“.",
@@ -101,6 +102,10 @@ export const de = {
   settingsReset: "Einstellungen wurden zurückgesetzt.",
   liveActionWarning:
     "Die nächsten Schritte bedienen echte Gmail-Elemente. Beobachte die Aktion und brich bei einem unerwarteten Zustand sofort ab.",
+  entriesChecked: "Einträge geprüft",
+  recurringSenders: "wiederkehrende Absender",
+  notUnambiguous: "nicht eindeutig",
+  groupMarkedDone: "wurde als erledigt markiert.",
 } as const;
 
 export type DeText = keyof typeof de;
