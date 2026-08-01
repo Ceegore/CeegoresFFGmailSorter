@@ -13,6 +13,16 @@ const forbidden = [
   ["eval", /\beval\s*\(/u],
   ["new Function", /\bnew\s+Function\b/u],
   ["document.cookie", /\bdocument\.cookie\b/u],
+  // ITI-062: additional network sinks that are easy to bypass when only the
+  // literal primitive names above are scanned. These cover the remaining
+  // reachable network primitives in a browser/extension context.
+  ["window.fetch", /\bwindow\s*\.\s*fetch\b/u],
+  ["globalThis.fetch", /\bglobalThis\s*\.\s*fetch\b/u],
+  ["new Image", /\bnew\s+Image\s*\(/u],
+  ["window.open", /\bwindow\s*\.\s*open\s*\(/u],
+  ["new Worker", /\bnew\s+Worker\s*\(/u],
+  ["new SharedWorker", /\bnew\s+SharedWorker\s*\(/u],
+  [".src assignment", /\.(src|href|action)\s*=\s*["'`]https?:\/\//u],
 ];
 
 async function walk(dir) {

@@ -171,7 +171,7 @@ function rankConfidence(c: SenderObservation["confidence"]): number {
   return c === "high" ? 3 : c === "medium" ? 2 : 1;
 }
 
-/** Re-validate an already-normalized email string (used by the analyzer). */
+// Currently unused; kept for potential future hovercard validation.
 export function revalidateEmail(email: string): string | null {
   const r = normalizeEmail(email);
   return r.ok ? r.value : null;

@@ -89,6 +89,10 @@ function createDiagnosticBlobSync(dto: DiagnosticExportV1): Blob {
   return new Blob([bytes], { type: "application/json" });
 }
 
+// Part of the privacy module's public API. The diagnostics UI button is
+// currently disconnected, so this is not called from the UI; it is kept so it
+// can be re-connected when diagnostics are re-enabled. buildDiagnosticDto and
+// createDiagnosticBlob (above) remain exercised by unit tests.
 export function downloadDiagnosticBlob(blob: Blob, now = new Date()): void {
   const stamp = now
     .toISOString()

@@ -1,0 +1,10 @@
+# ITI-066: Dependabot keeps GitHub Actions dependencies current and surfaces the
+# commit SHAs needed to move from version-tag pins to immutable SHA pins (the
+# final hardening step before release). See .github/workflows/ci.yml.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5

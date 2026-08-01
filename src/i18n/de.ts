@@ -40,6 +40,8 @@ export const de = {
   stepSelectAll: "Alle Treffer auswählen",
   stepOpenMove: "Verschieben-Menü öffnen",
   stepChooseTarget: "Ziel in Gmail auswählen",
+  // Currently unused by views.ts/render.ts; retained from spec for the
+  // not-yet-implemented "choose target" / "completion uncertain" views.
   chooseTargetTitle: "Ziel jetzt in Gmail auswählen",
   chooseTargetBody:
     "Wähle im geöffneten Gmail-Menü ein vorhandenes Label oder „Neu erstellen“. Das Add-on führt die Verschiebung nicht ohne deine Auswahl aus.",
@@ -48,6 +50,8 @@ export const de = {
   senderProcessed: "Absender bearbeitet",
   nextSender: "Nächsten Absender bearbeiten",
   resultList: "Zur Ergebnisliste",
+  // Currently unused; retained from spec for the not-yet-implemented
+  // "completion uncertain" recovery view.
   completionUncertain: "Abschluss nicht eindeutig erkannt",
   completionUncertainBody:
     "Prüfe die Gmail-Ergebnisliste. Wenn die Nachrichten verschoben wurden, markiere die Gruppe als erledigt.",

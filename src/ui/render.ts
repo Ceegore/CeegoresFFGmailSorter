@@ -71,6 +71,20 @@ export function renderApp(shadow: ShadowRoot, state: AppState, controller: AppCo
     }
   }
 
+  // ITI-047: if no element had focus before, move focus to the view's heading
+  // or first interactive element for accessibility. The overlay has
+  // role="dialog" but previously did not manage focus on view transitions,
+  // leaving screen reader users without a sensible target after a state change.
+  if (!activeTestid) {
+    const heading = body.querySelector<HTMLElement>("h1, h2, h3, [role='heading']");
+    if (heading) {
+      heading.focus();
+    } else {
+      const firstButton = body.querySelector<HTMLElement>("button, [role='button']");
+      if (firstButton) firstButton.focus();
+    }
+  }
+
   // Footer carries exactly one brand credit, reattached each render.
   const footer = overlay.querySelector<HTMLElement>("[data-testid='giso-footer']");
   footer?.replaceChildren(renderBrandCredit());
@@ -88,6 +102,9 @@ function buildShell(): HTMLElement {
   header.className = "giso-overlay__header";
   const title = document.createElement("h1");
   title.className = "giso-overlay__title";
+  // ITI-047: make the title focusable so it can be the focus target on view
+  // transitions where no specific control previously held focus.
+  title.tabIndex = -1;
   title.textContent = de.addonName;
   const handle = document.createElement("button");
   handle.type = "button";

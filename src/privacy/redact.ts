@@ -3,8 +3,6 @@
 // snippet/text fields. After serialization, diagnostic-export re-scans.
 const FORBIDDEN_KEY =
   /email|address|query|href|url|subject|snippet|body|html|textcontent|outerhtml|arialabel|displayname|sendername|name/iu;
-const ALLOWED_KEY =
-  /^(confidence|score|candidateCount|rowCount|resolvedCount|unresolvedCount|duplicateCount|weakFingerprintCount|timeoutMs|retry|workflow|view|locale|accountSlot|manualGlobalSelectionConfirmed|evidenceCodes)$/u;
 
 const EMAILISH = /(?:mailto:)?[^\s"'<>]+@[^\s"'<>]+/giu;
 
@@ -45,9 +43,4 @@ export async function redactUnknown(value: unknown, key = ""): Promise<unknown> 
     return Object.fromEntries(entries);
   }
   return value;
-}
-
-/** Diagnostic event factory: drops sensitive detail keys before they exist. */
-export function isAllowedDetailKey(key: string): boolean {
-  return ALLOWED_KEY.test(key) && !FORBIDDEN_KEY.test(key);
 }

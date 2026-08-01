@@ -25,6 +25,9 @@ export interface GmailView {
   readonly viewClass: string;
 }
 
+// Design contract (spec §13.1): the types below are the target adapter
+// architecture. GmailDomAdapter and SelectionState are not yet wired into the
+// runtime detection layer; detectionOk/detectionFail/requireDetection are in use.
 export type SelectionState = "none" | "page" | "partial" | "all";
 
 export interface CompletionContext {
@@ -42,6 +45,9 @@ export interface CompletionEvidence {
   readonly score: number;
 }
 
+// Design contract (spec §13.1, §51): not yet implemented in production — the
+// live detection layer (dom-detectors.ts) covers these concerns today. Kept as
+// the target adapter interface the detection layer should converge on.
 export interface GmailDomAdapter {
   detectShell(): Detection<GmailShell>;
   detectCurrentView(): Detection<GmailView>;

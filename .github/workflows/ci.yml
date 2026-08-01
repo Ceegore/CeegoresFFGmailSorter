@@ -10,8 +10,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      # BUG-073: actions pinned to specific minor versions (SHA pinning is the
-      # final hardening step before release — requires human to resolve SHAs).
+      # BUG-073 / ITI-066: actions pinned to specific minor versions. SHA
+      # pinning is the final hardening step before release — it requires a human
+      # to resolve the commit SHAs via, e.g.:
+      #   git ls-remote https://github.com/actions/checkout refs/tags/v4.2.2
+      # Dependabot (.github/dependabot.yml) opens weekly PRs that surface the
+      # resolved SHAs for each new release so this stays tractable.
       - uses: actions/checkout@v4.2.2
       - uses: actions/setup-node@v4.3.0
         with:

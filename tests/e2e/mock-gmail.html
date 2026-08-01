@@ -107,6 +107,9 @@ purpose: Playwright mock-E2E (spec §59.4)
         <button id="select-all-btn" type="button">
           Alle Unterhaltungen auswählen, die dieser Suche entsprechen
         </button>
+        <!-- Separate confirmation text so the button is not destroyed when the
+             message updates (previously banner.textContent overwrote it). -->
+        <span id="select-all-status" class="select-all-status"></span>
       </div>
 
       <div id="list" role="list"></div>
@@ -196,10 +199,13 @@ purpose: Playwright mock-E2E (spec §59.4)
         renderRows();
       });
 
+      const selectAllStatus = document.getElementById("select-all-status");
       selectAllBtn.addEventListener("click", () => {
         const rows = list.querySelectorAll("[role=listitem]");
         rows.forEach((r) => state.selected.add(r.getAttribute("data-thread-id")));
-        banner.textContent = "Alle " + rows.length + " Unterhaltungen ausgewählt";
+        // Write to the dedicated status span, not banner.textContent, so the
+        // select-all button element is preserved for repeated clicks.
+        selectAllStatus.textContent = "Alle " + rows.length + " Unterhaltungen ausgewählt";
         renderRows();
       });
 

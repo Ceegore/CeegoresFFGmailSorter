@@ -17,10 +17,6 @@ import { fingerprintRow } from "@/analyzer/fingerprint";
 import { compareByCountThenName, groupResolvedSenders } from "@/analyzer/grouping";
 import type { AnalyzedEntry, AnalysisResult, SenderIdentity } from "@/shared/types";
 
-export interface AnalyzeResult {
-  readonly result: AnalysisResult;
-}
-
 // H-2: Use a monotonically increasing counter for the run id instead of
 // Date.now(). Two analyses started within the same millisecond would otherwise
 // share a run id, which collides the weak fingerprint namespace (the run id is
