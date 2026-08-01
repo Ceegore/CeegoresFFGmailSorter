@@ -20,9 +20,19 @@ export interface AnalyzeResult {
   readonly result: AnalysisResult;
 }
 
-// Async to match the controller's effect contract and allow future
-// budgeted hovercard resolution (spec §14.3) without an API change.
-// eslint-disable-next-line @typescript-eslint/require-await
+/**
+ * ITI-013: a simple count-based fingerprint of the message list's children used
+ * only to detect DOM churn during the stability window. This is intentionally a
+ * separate, lighter fingerprint than the global listFingerprint used elsewhere —
+ * it scopes to a single list element so unrelated DOM changes don't reset the
+ * window, and it tracks child element count plus text length as cheap signals.
+ */
+function listFingerprintForStability(list: HTMLElement): string {
+  return `children=${String(list.childElementCount)};textLen=${String(list.textContent.length)}`;
+}
+
+// Async to match the controller's effect contract and to allow the stability
+// window (and future budgeted hovercard resolution, spec §14.3) to await.
 export async function analyzeCurrentInbox(signal: AbortSignal): Promise<AnalysisResult> {
   assertNotAborted(signal);
   const startedAt = Date.now();
@@ -66,6 +76,35 @@ export async function analyzeCurrentInbox(signal: AbortSignal): Promise<Analysis
   if (!list) {
     throwAppError(appError("GISO-LIST-001", "noRows", "message list not found", true));
   }
+
+  // ITI-013: wait for a 250ms DOM stability window before scanning. The spec
+  // requires the list to be stable before we snapshot rows, otherwise transient
+  // Gmail rendering (lazy rows, virtualized reflow) can produce a partial or
+  // reordered result. We poll a lightweight child-count fingerprint and reset
+  // the window whenever it changes.
+  const listForStability = list;
+  let lastFingerprint = listFingerprintForStability(listForStability);
+  let stableSince = performance.now();
+  while (performance.now() - stableSince < 250) {
+    assertNotAborted(signal);
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, 50);
+      signal.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(timer);
+          resolve();
+        },
+        { once: true },
+      );
+    });
+    const currentFingerprint = listFingerprintForStability(listForStability);
+    if (currentFingerprint !== lastFingerprint) {
+      lastFingerprint = currentFingerprint;
+      stableSince = performance.now();
+    }
+  }
+  assertNotAborted(signal);
 
   const rawRows = collectMessageRows(list);
   if (rawRows.length === 0) {

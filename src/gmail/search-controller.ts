@@ -88,6 +88,32 @@ function readSearchBoxValue(): string {
   return box ? box.value : "";
 }
 
+/**
+ * ITI-009: Reusable submission strategy (§53.4). Order: button click, then
+ * form.requestSubmit, then Enter key. The retry path used to only re-click a
+ * button when one existed, so when the first attempt fell through to
+ * form.requestSubmit or Enter, the retry did nothing. Extracting this lets the
+ * retry repeat the exact same strategy.
+ */
+function submitSearch(box: HTMLInputElement): void {
+  const button = findSearchSubmitButton();
+  if (button) {
+    button.click();
+    return;
+  }
+  const form = box.form;
+  if (form) {
+    form.requestSubmit();
+    return;
+  }
+  box.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true }),
+  );
+  box.dispatchEvent(
+    new KeyboardEvent("keyup", { key: "Enter", code: "Enter", bubbles: true, cancelable: true }),
+  );
+}
+
 function routeFingerprint(): string {
   return `${location.pathname}#${location.hash}`;
 }
@@ -167,34 +193,9 @@ export async function submitAndWaitUntilReady(
   // Submission order (§53.4): button, then form.requestSubmit, then Enter.
   // Enter is restored as a tertiary fallback — Gmail's search box responds to
   // Enter reliably. BUG-070's concern was about Enter as the ONLY method; here
-  // it is the last resort after button and form are tried.
-  const button = findSearchSubmitButton();
-  if (button) {
-    button.click();
-  } else {
-    const form = box.form;
-    if (form) {
-      form.requestSubmit();
-    } else {
-      // Enter key as tertiary fallback — Gmail's search responds to Enter.
-      box.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "Enter",
-          code: "Enter",
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
-      box.dispatchEvent(
-        new KeyboardEvent("keyup", {
-          key: "Enter",
-          code: "Enter",
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
-    }
-  }
+  // it is the last resort after button and form are tried. ITI-009: the
+  // strategy is factored into submitSearch so the timeout retry repeats it.
+  submitSearch(box);
 
   try {
     return await waitForEvidence(
@@ -217,9 +218,17 @@ export async function submitAndWaitUntilReady(
       throw error;
     }
     assertNotAborted(signal);
-    // One controlled timeout-retry per §15.2.
-    const btn = findSearchSubmitButton();
-    btn?.click();
+    // One controlled timeout-retry per §15.2. ITI-009: re-resolve the search
+    // box and repeat the full submission strategy (button / form / Enter) — the
+    // previous retry only clicked a button, which did nothing when the first
+    // attempt fell through to Enter.
+    const retryBox = findSearchBox();
+    if (!retryBox) {
+      throwAppError(
+        appError("GISO-SEARCH-BOX-001", "searchFailed", "search box not found on retry", true),
+      );
+    }
+    submitSearch(retryBox);
     return await waitForEvidence(
       query,
       baselineRoute,

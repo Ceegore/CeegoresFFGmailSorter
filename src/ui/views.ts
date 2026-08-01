@@ -31,6 +31,9 @@ function button(
 function statusLine(text: string): HTMLParagraphElement {
   const p = document.createElement("p");
   p.className = "giso-status";
+  // ITI-048: announce progress/status changes to assistive tech. "polite" so
+  // updates don't interrupt the user mid-keystroke but are still read out.
+  p.setAttribute("aria-live", "polite");
   p.textContent = text;
   return p;
 }
@@ -209,6 +212,9 @@ function* resultsView(
   filterInput.className = "giso-input";
   filterInput.dataset["testid"] = "giso-filter";
   filterInput.placeholder = de.filterPlaceholder;
+  // ITI-046: a placeholder alone is not an accessible label. Mirror it as an
+  // explicit aria-label so screen readers announce the control's purpose.
+  filterInput.setAttribute("aria-label", de.filterPlaceholder);
   filterInput.value = state.filter;
   filterInput.addEventListener("input", () => {
     controller.setFilter(filterInput.value);
@@ -216,6 +222,8 @@ function* resultsView(
   const sortSelect = document.createElement("select");
   sortSelect.className = "giso-select";
   sortSelect.dataset["testid"] = "giso-sort";
+  // ITI-046: the sort select had no label at all. Expose an accessible label.
+  sortSelect.setAttribute("aria-label", de.sortLabel);
   for (const [value, label] of [
     ["count", de.sortFrequent],
     ["name", de.sortName],

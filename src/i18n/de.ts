@@ -17,6 +17,8 @@ export const de = {
   sortFrequent: "Häufigste zuerst",
   sortName: "Name A–Z",
   sortAddress: "Adresse A–Z",
+  // ITI-046: accessible label for the sort <select> control.
+  sortLabel: "Sortieren",
   entries: "Einträge",
   findAllInbox: "Alle im Posteingang finden",
   ignoreSession: "Für diese Sitzung ignorieren",

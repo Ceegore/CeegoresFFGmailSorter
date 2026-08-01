@@ -23,6 +23,16 @@ async function handleActionClick(tab: {
   try {
     rawResponse = await browser.tabs.sendMessage(tab.id, message);
   } catch {
+    // ITI-025: don't open a duplicate Gmail tab if the active tab IS Gmail but
+    // the content script isn't ready yet (transient injection failure / a
+    // Gmail tab that finished loading after the script check). The user can
+    // retry by clicking again; opening a second Gmail tab is worse.
+    if (tab.url.startsWith("https://mail.google.com")) {
+      console.warn(
+        "Inbox Sender Organizer: content script not ready on this Gmail tab. Click again to retry.",
+      );
+      return;
+    }
     await browser.tabs.create({ url: GMAIL_HOME_URL });
     return;
   }

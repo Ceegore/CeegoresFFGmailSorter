@@ -53,6 +53,10 @@ export async function waitForMutationState<T extends string | number | boolean>(
         last = current;
         stableSince = now;
       }
+      // ITI-051: clear any previously scheduled poll timer before scheduling a
+      // new one. Without this, each check() (and each MutationObserver
+      // callback) stacked another pending timer, causing a timer storm.
+      if (pollTimer !== null) window.clearTimeout(pollTimer);
       pollTimer = window.setTimeout(check, Math.min(50, Math.max(10, stabilityMs)));
     };
 
