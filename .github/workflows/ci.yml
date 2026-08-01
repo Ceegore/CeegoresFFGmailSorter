@@ -16,7 +16,7 @@ jobs:
       #   git ls-remote https://github.com/actions/checkout refs/tags/v4.2.2
       # Dependabot (.github/dependabot.yml) opens weekly PRs that surface the
       # resolved SHAs for each new release so this stays tractable.
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v4.3.0
         with:
           node-version: 24.18.0
