@@ -21,7 +21,7 @@ const spies = vi.hoisted(() => ({
 }));
 
 vi.mock("@/gmail/search-controller", () => ({
-  buildInboxSenderQuery: (email: string) => `in:inbox has:nouserlabels "from:${email}"`,
+  buildInboxSenderQuery: (email: string) => `in:inbox "from:${email}"`,
   submitAndWaitUntilReady: vi.fn(() =>
     Promise.resolve({
       queryMatches: true,
@@ -113,7 +113,7 @@ describe("Phase A safe mode", () => {
     await c.analyze();
     c.selectGroup("sender:a@example.com");
     await c.confirmSearch();
-    expect(store.getState().expectedQuery).toBe('in:inbox has:nouserlabels "from:a@example.com"');
+    expect(store.getState().expectedQuery).toBe('in:inbox "from:a@example.com"');
     c.dispose();
   });
 

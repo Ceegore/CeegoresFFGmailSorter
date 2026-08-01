@@ -14,6 +14,12 @@ if (!Array.isArray(manifest.permissions)) fail("permissions must be an array");
 for (const permission of manifest.permissions ?? []) {
   if (!allowedPermissions.has(permission)) fail(`Unexpected permission: ${permission}`);
 }
+if (!manifest.permissions?.includes("storage")) fail("storage permission is required");
+const cs = manifest.content_scripts?.[0];
+if (!cs) fail("content_scripts must have at least one entry");
+if (!cs.matches?.includes("https://mail.google.com/*")) fail("content_scripts must match Gmail");
+if (!cs.js?.includes("content.js")) fail("content_scripts must include content.js");
+if (cs.run_at !== "document_idle") fail("content_scripts run_at must be document_idle");
 if (JSON.stringify(manifest.host_permissions) !== JSON.stringify(["https://mail.google.com/*"]))
   fail("host_permissions must be exactly Gmail");
 if (manifest.incognito !== "not_allowed") fail("incognito must be not_allowed");

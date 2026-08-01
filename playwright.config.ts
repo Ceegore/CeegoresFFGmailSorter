@@ -4,6 +4,7 @@ const ci = process.env["CI"] !== undefined;
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  testMatch: "**/*.spec.ts",
   fullyParallel: false,
   retries: ci ? 1 : 0,
   workers: 1,

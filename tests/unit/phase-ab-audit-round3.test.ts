@@ -124,7 +124,7 @@ describe("ROUND3: SEARCH_READY_MANUAL view content", () => {
         overlayVisible: true,
         workflow: "SEARCH_READY_MANUAL" as const,
         activeGroupId: "sender:a@example.com",
-        expectedQuery: 'in:inbox has:nouserlabels "from:a@example.com"',
+        expectedQuery: 'in:inbox "from:a@example.com"',
         analysis: {
           startedAt: 0,
           completedAt: 0,
@@ -152,7 +152,7 @@ describe("ROUND3: SEARCH_READY_MANUAL view content", () => {
       c,
     );
     expect(shadow.querySelector('[data-testid="giso-query"]')?.textContent).toBe(
-      'in:inbox has:nouserlabels "from:a@example.com"',
+      'in:inbox "from:a@example.com"',
     );
     expect(shadow.querySelector('[data-testid="giso-copy-query"]')).not.toBeNull();
     expect(shadow.querySelector('[data-testid="giso-mark-done"]')).not.toBeNull();

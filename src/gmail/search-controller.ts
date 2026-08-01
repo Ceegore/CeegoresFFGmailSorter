@@ -6,14 +6,13 @@ import { normalizeEmail } from "@/analyzer/email-parser";
 import { assertNotAborted } from "@/shared/abort";
 import { delay } from "@/shared/time";
 import { gmailTextPatterns, matchesAny } from "@/gmail/gmail-text-patterns";
+import { detectAccountSlot } from "@/gmail/dom-detectors";
 import { appError, throwAppError } from "@/shared/errors";
 
 export function buildInboxSenderQuery(email: string): string {
   const normalized = normalizeEmail(email);
   if (!normalized.ok) throw new Error(`Invalid sender email: ${normalized.error}`);
-  // Only show emails that have NO user labels (has:nouserlabels), so the user
-  // can find unlabeled emails from a sender and organize them.
-  return `in:inbox has:nouserlabels "from:${normalized.value}"`;
+  return `in:inbox "from:${normalized.value}"`;
 }
 
 export function normalizeQueryForComparison(value: string): string {
@@ -135,6 +134,7 @@ export async function submitAndWaitUntilReady(
 
   const baselineRoute = routeFingerprint();
   const baselineList = listFingerprint();
+  const accountSlot = detectAccountSlot();
 
   const box = findSearchBox();
   if (!box) {
@@ -181,6 +181,7 @@ export async function submitAndWaitUntilReady(
       query,
       baselineRoute,
       baselineList,
+      accountSlot,
       signal,
       timeoutMs,
       stabilityMs,
@@ -203,6 +204,7 @@ export async function submitAndWaitUntilReady(
       query,
       baselineRoute,
       baselineList,
+      accountSlot,
       signal,
       timeoutMs,
       stabilityMs,
@@ -218,6 +220,7 @@ async function waitForEvidence(
   expectedQuery: string,
   baselineRoute: string,
   baselineList: string,
+  accountSlot: number | null,
   signal: AbortSignal,
   timeoutMs: number,
   stabilityMs: number,
@@ -229,6 +232,16 @@ async function waitForEvidence(
 
   while (performance.now() - startedAt < timeoutMs) {
     assertNotAborted(signal);
+    if (detectAccountSlot() !== accountSlot) {
+      throwAppError(
+        appError(
+          "GISO-SEARCH-ACCOUNT-001",
+          "searchFailed",
+          "account slot changed during search",
+          false,
+        ),
+      );
+    }
     const evidence: SearchReadyEvidence = {
       queryMatches: normalizeQueryForComparison(readSearchBoxValue()) === expected,
       routeChanged: routeFingerprint() !== baselineRoute,

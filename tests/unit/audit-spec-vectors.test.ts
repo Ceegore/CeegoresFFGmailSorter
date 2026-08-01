@@ -133,14 +133,10 @@ describe("AUDIT: spec §50.4 grouping invariants", () => {
 // ---- §53.1 exact query (AC-003) ----
 describe("AUDIT: spec §53.1 exact locked query", () => {
   it("news@example.com produces exact quoted inbox query", () => {
-    expect(buildInboxSenderQuery("news@example.com")).toBe(
-      'in:inbox has:nouserlabels "from:news@example.com"',
-    );
+    expect(buildInboxSenderQuery("news@example.com")).toBe('in:inbox "from:news@example.com"');
   });
   it("uppercased input still produces lowercased quoted query", () => {
-    expect(buildInboxSenderQuery("NEWS@Example.COM")).toBe(
-      'in:inbox has:nouserlabels "from:news@example.com"',
-    );
+    expect(buildInboxSenderQuery("NEWS@Example.COM")).toBe('in:inbox "from:news@example.com"');
   });
 });
 
@@ -168,7 +164,7 @@ describe("AUDIT: spec §48 state machine safety", () => {
   it("SEARCH_SUBMITTED only accepts controller-generated query (AUD-011)", () => {
     const s = reduceAppState(initialState, {
       type: "SEARCH_SUBMITTED",
-      query: 'in:inbox has:nouserlabels "from:attacker@example.com"',
+      query: 'in:inbox "from:attacker@example.com"',
     });
     expect(s.workflow).toBe("IDLE");
   });

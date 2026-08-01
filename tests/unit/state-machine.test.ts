@@ -47,7 +47,7 @@ describe("state machine", () => {
     expect(
       reduceAppState(initialState, {
         type: "SEARCH_SUBMITTED",
-        query: 'in:inbox has:nouserlabels "from:a@example.com"',
+        query: 'in:inbox "from:a@example.com"',
       }).workflow,
     ).toBe("IDLE");
   });
@@ -61,7 +61,7 @@ describe("state machine", () => {
     s = reduceAppState(s, { type: "CONFIRM_SEARCH" });
     s = reduceAppState(s, {
       type: "SEARCH_SUBMITTED",
-      query: 'in:inbox has:nouserlabels "from:a@example.com"',
+      query: 'in:inbox "from:a@example.com"',
     });
     s = reduceAppState(s, { type: "SEARCH_READY" });
     s = reduceAppState(s, { type: "PAGE_SELECTED" });

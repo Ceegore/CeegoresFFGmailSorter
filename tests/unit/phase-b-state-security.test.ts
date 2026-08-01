@@ -50,7 +50,7 @@ describe("BUG-004: ROUTE_CONTEXT_INVALIDATED resets to IDLE", () => {
       workflow: "WAITING_SEARCH_RESULTS" as const,
       analysis: analysis([group()]),
       activeGroupId: "sender:a@example.com",
-      expectedQuery: 'in:inbox has:nouserlabels "from:a@example.com"',
+      expectedQuery: 'in:inbox "from:a@example.com"',
       error: appError("GISO-INTERNAL-001", "internal", "x", true),
     };
     const s = reduceAppState(busy, { type: "ROUTE_CONTEXT_INVALIDATED" });

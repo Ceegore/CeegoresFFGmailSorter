@@ -301,6 +301,18 @@ function renderGroup(group: SenderGroup, controller: AppController): HTMLLIEleme
     actions.append(done);
   } else if (group.status === "error" && group.lastErrorCode) {
     actions.append(errorBlock(errorCodeToMessageKey(group.lastErrorCode), group.lastErrorCode));
+    // ITI-003: give errored groups a retry path — restore the group to ready so
+    // the "Alle im Posteingang finden" action becomes available again.
+    actions.append(
+      button(
+        "giso-retry-group",
+        de.retry,
+        () => {
+          controller.restoreGroup(group.id);
+        },
+        "primary",
+      ),
+    );
   }
   li.append(name, email, badge, actions);
   return li;

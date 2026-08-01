@@ -29,6 +29,8 @@ export interface AppController {
   readonly setFilter: (value: string) => void;
   readonly setSort: (value: AppState["sort"]) => void;
   readonly ignoreGroup: (groupId: string) => void;
+  /** ITI-003: restore an errored group to ready status for retry. */
+  readonly restoreGroup: (groupId: string) => void;
   /** Invalidate the session on an unexpected route/account change (BUG-004/035). */
   readonly invalidateOnRouteChange: () => void;
   readonly handleBackgroundMessage: (
@@ -55,6 +57,7 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
   // BUG-035: while the workflow is driving its own search navigation, route
   // changes are expected and must NOT invalidate the session.
   let expectedRouteTransition = false;
+  let expectedRouteGraceUntil = 0;
 
   const dispatch = (event: AppEvent): { accepted: boolean } => {
     return store.dispatch(event);
@@ -94,18 +97,18 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
       await task(signal);
     } catch (error: unknown) {
       if (isAbortError(error)) return;
-      // Preserve a structured GisoError's code/message; wrap anything else.
-      if (error instanceof GisoError) {
-        dispatch({ type: "FAIL", error: error.app });
-        return;
-      }
-      const wrapped = appError("GISO-INTERNAL-001", "internal", toTechnicalMessage(error), true);
-      // BUG-008: for the generic wrap case, mark the active group as error +
-      // fail the workflow atomically so the group is never left stuck
-      // in-progress. Without an active group, fall back to plain FAIL.
-      const activeGroupId = store.getState().activeGroupId;
-      if (activeGroupId) {
-        dispatch({ type: "WORKFLOW_FAILED", groupId: activeGroupId, error: wrapped });
+      // ITI-002 / BUG-008: preserve a structured GisoError's code/message;
+      // wrap anything else. When there is an active group, use WORKFLOW_FAILED
+      // for BOTH cases so the group is marked error atomically and is never
+      // left stranded in-progress (GisoError used to dispatch plain FAIL). With
+      // no active group, fall back to plain FAIL.
+      const groupId = store.getState().activeGroupId;
+      const wrapped =
+        error instanceof GisoError
+          ? error.app
+          : appError("GISO-INTERNAL-001", "internal", toTechnicalMessage(error), true);
+      if (groupId) {
+        dispatch({ type: "WORKFLOW_FAILED", groupId, error: wrapped });
       } else {
         dispatch({ type: "FAIL", error: wrapped });
       }
@@ -158,6 +161,7 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
           evidence = await submitAndWaitUntilReady(query, signal);
         } finally {
           expectedRouteTransition = false;
+          expectedRouteGraceUntil = performance.now() + 3000; // 3s grace for debounced observer
         }
         // Empty results end the workflow for this group with an error.
         if (evidence.emptyStateDetected && !evidence.mailListDetected) {
@@ -269,11 +273,15 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
     returnToResults(): void {
       abortController?.abort();
       abortController = null;
+      // ITI-001: restore the active group to ready before returning. Otherwise a
+      // Back from SEARCH_READY_MANUAL/WAITING_* leaves the group permanently
+      // in-progress and unactionable.
+      restoreActiveGroupToReady();
       dispatch({ type: "RETURN_TO_RESULTS" });
     },
     invalidateOnRouteChange(): void {
       // BUG-004/035: ignore route changes the workflow itself is driving.
-      if (expectedRouteTransition) return;
+      if (expectedRouteTransition || performance.now() < expectedRouteGraceUntil) return;
       abortController?.abort();
       abortController = null;
       dispatch({ type: "ROUTE_CONTEXT_INVALIDATED" });
@@ -286,6 +294,11 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
     },
     ignoreGroup(groupId: string): void {
       dispatch({ type: "IGNORE_GROUP", groupId });
+    },
+    restoreGroup(groupId: string): void {
+      // ITI-003: MARK_GROUP_READY restores an errored (or in-progress) group so
+      // the user can retry from the results list.
+      dispatch({ type: "MARK_GROUP_READY", groupId });
     },
     handleBackgroundMessage(type): ContentResponse | Promise<ContentResponse> {
       try {
