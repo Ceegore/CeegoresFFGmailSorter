@@ -10,6 +10,7 @@ import {
   matchesAny,
   type GmailDetectionLocale,
 } from "@/gmail/gmail-text-patterns";
+import { isInteractable } from "@/shared/dom";
 
 const GMAIL_HOST = "mail.google.com";
 
@@ -47,10 +48,18 @@ function isInboxNavActive(): boolean {
     const selected = link.getAttribute("aria-selected");
     if (current === "page" || selected === "true") return true;
   }
-  // Fallback: if the route is exactly #inbox and there's at least one inbox
-  // link present, accept (the route check already proved we're on inbox).
+  // Fallback: if the route is exactly #inbox, accept only when there is a
+  // genuinely interactable (visible) inbox link. CUR-012: the previous check
+  // accepted ANY inbox link regardless of visibility, so a hidden collapsed
+  // nav link (or a link in a detached/aria-hidden submenu) could falsely mark
+  // the inbox as active on a non-inbox surface.
   const hash = location.hash;
-  if (/^#inbox$/iu.test(hash) && inboxLinks.length > 0) return true;
+  if (/^#inbox$/iu.test(hash)) {
+    for (const link of inboxLinks) {
+      if (!isInteractable(link)) continue;
+      return true;
+    }
+  }
   return false;
 }
 

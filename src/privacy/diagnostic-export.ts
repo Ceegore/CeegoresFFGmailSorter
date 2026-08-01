@@ -37,6 +37,18 @@ const FORBIDDEN_AFTER_BUILD = [
 ];
 
 /**
+ * GATE-005: coerce a numeric field to a safe non-negative integer for the DTO.
+ * JSON.stringify turns NaN/Infinity into `null`, which would change the shape of
+ * the export (a nullable count instead of a number) and could trip downstream
+ * consumers. Math.floor alone does not reject non-finite values (Math.floor of
+ * Infinity is still Infinity, which serializes to null), so guard with
+ * Number.isFinite first and fall back to 0 for anything non-finite or negative.
+ */
+function safeInt(v: number): number {
+  return Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0;
+}
+
+/**
  * Build a strict diagnostic DTO from allowlisted technical fields only.
  * BUG-049: no raw analysis objects are passed; only pre-extracted numbers,
  * booleans, and short code strings.
@@ -76,11 +88,13 @@ export function buildDiagnosticDto(fields: {
     workflow: sanitizedWorkflow,
     // Sanitize: only allow short alphanumeric/dash codes.
     errorCodes: fields.errorCodes.filter((c) => /^GISO-[A-Z0-9-]+$/u.test(c)).slice(0, 50),
-    rowCount: Math.max(0, Math.floor(fields.rowCount)),
-    resolvedCount: Math.max(0, Math.floor(fields.resolvedCount)),
-    unresolvedCount: Math.max(0, Math.floor(fields.unresolvedCount)),
-    duplicateCount: Math.max(0, Math.floor(fields.duplicateCount)),
-    weakFingerprintCount: Math.max(0, Math.floor(fields.weakFingerprintCount)),
+    // GATE-005: safeInt rejects non-finite numbers (which would serialize to
+    // null) and clamps negatives to 0.
+    rowCount: safeInt(fields.rowCount),
+    resolvedCount: safeInt(fields.resolvedCount),
+    unresolvedCount: safeInt(fields.unresolvedCount),
+    duplicateCount: safeInt(fields.duplicateCount),
+    weakFingerprintCount: safeInt(fields.weakFingerprintCount),
     evidenceCodes: fields.evidenceCodes.filter((c) => /^GISO-[A-Z0-9-]+$/u.test(c)).slice(0, 50),
     timings: sanitizedTimings,
   };

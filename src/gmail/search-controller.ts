@@ -36,12 +36,18 @@ export function findSearchBox(): HTMLInputElement | null {
   // ITI-008: Prefer the search box inside a [role="search"] landmark (Gmail's
   // main search). This avoids matching Chat/Spaces/Contacts search controls
   // that live elsewhere in the document.
-  const inSearchLandmark = document.querySelector<HTMLInputElement>(
+  // CUR-003: querySelector returns the FIRST match even when it is
+  // hidden/disabled/stale. If that first input fails the interactability check,
+  // the previous code fell straight through to the header fallback, missing a
+  // perfectly usable SECOND landmark input. Iterate every landmark input and
+  // return the first interactable one.
+  const landmarkInputs = document.querySelectorAll<HTMLInputElement>(
     '[role="search"] input[type="text"], [role="search"] input[type="search"], [role="search"] input[role="searchbox"]',
   );
-  // CUR-003: skip hidden/disabled/stale duplicates — only interactable boxes
-  // count as a real search box.
-  if (inSearchLandmark && isInteractable(inSearchLandmark)) return inSearchLandmark;
+  for (const input of landmarkInputs) {
+    if (!isInteractable(input)) continue;
+    return input;
+  }
   // Fallback: a labelled text input in the header area.
   const headerInputs = document.querySelectorAll<HTMLInputElement>(
     'header input[type="text"], [role="banner"] input[type="text"]',
@@ -65,7 +71,17 @@ export function findSearchSubmitButton(): HTMLElement | null {
       // duplicate must not terminate the fallback chain prematurely.
       if (!isInteractable(btn)) continue;
       const label = `${btn.getAttribute("aria-label") ?? ""} ${btn.textContent || ""}`;
-      if (/search|suchen|suche/iu.test(label)) return btn;
+      if (/search|suchen|suche/iu.test(label)) {
+        // CUR-002: exclude "search options", "search filter", "search settings"
+        // buttons. findSearchSubmitButton previously returned the FIRST labelled
+        // button it found, which could be Gmail's search-OPTIONS (filter) toggle
+        // rather than the real submit button. Clicking that opens the options
+        // panel instead of submitting, blocking the form/Enter fallback because
+        // submitSearch returned on the first match. Skipping these keeps the
+        // real submit button (or the form/Enter fallback) in play.
+        if (/option|filter|einstellung|setting|erweitert|advanced/iu.test(label)) continue;
+        return btn;
+      }
     }
   }
   // Fallback: search-labelled button in the header.
@@ -75,7 +91,11 @@ export function findSearchSubmitButton(): HTMLElement | null {
   for (const btn of headerButtons) {
     if (!isInteractable(btn)) continue;
     const label = `${btn.getAttribute("aria-label") ?? ""} ${btn.textContent || ""}`;
-    if (/search|suchen|suche/iu.test(label)) return btn;
+    if (/search|suchen|suche/iu.test(label)) {
+      // CUR-002: same exclusion as the landmark loop.
+      if (/option|filter|einstellung|setting|erweitert|advanced/iu.test(label)) continue;
+      return btn;
+    }
   }
   return null;
 }
@@ -132,10 +152,36 @@ function routeFingerprint(): string {
 function listFingerprint(): string {
   // CUR-004: scope the row count to the primary mail list so unrelated global
   // rows (nav/chat/settings) don't pollute the fingerprint.
+  // CUR-015/CUR-008: include the per-row thread ids so a same-length DOM swap
+  // (Gmail virtualization replacing one thread with another) is detected and
+  // counts as a fingerprint change. A bare count could miss a search that
+  // happens to return the same number of rows as the inbox baseline.
   const list = findMessageListElement();
-  if (!list) return "rows=0";
+  if (!list) return "none";
   const rows = list.querySelectorAll('[role="listitem"], tr[role="row"]');
-  return `rows=${String(rows.length)}`;
+  const ids: string[] = [];
+  for (const row of rows) {
+    const id =
+      row.getAttribute("data-thread-id") ??
+      row.getAttribute("data-legacy-thread-id") ??
+      row.getAttribute("id") ??
+      "?";
+    ids.push(id);
+  }
+  return `count=${String(rows.length)};ids=${ids.join(",")}`;
+}
+
+/**
+ * CUR-008: shared helper that reports whether the verified mail list currently
+ * holds any rows. isEmptyState/isRelatedOnly previously checked
+ * document.querySelector('[role="listitem"]') GLOBALLY, so a stray nav/chat row
+ * anywhere on the page masked a genuinely empty result. Scoping to the primary
+ * mail list (the same element the evidence model verifies) means the empty /
+ * related-only signals reflect the real search surface.
+ */
+function hasScopedMailRows(): boolean {
+  const list = findMessageListElement();
+  return list !== null && list.querySelectorAll('[role="listitem"], tr[role="row"]').length > 0;
 }
 
 /**
@@ -166,16 +212,18 @@ function isRelatedOnly(): boolean {
   const relatedVisible =
     matchesAny(text, gmailTextPatterns.de.related) ||
     matchesAny(text, gmailTextPatterns.en.related);
-  const hasMailRows = document.querySelector('[role="listitem"], tr[role="row"]') !== null;
-  return relatedVisible && !hasMailRows;
+  // CUR-008: scope the row check to the verified mail list, not the whole
+  // document, so unrelated global rows no longer mask a related-only state.
+  return relatedVisible && !hasScopedMailRows();
 }
 
 function isEmptyState(): boolean {
   const text = readStatusText();
   const deEmpty = gmailTextPatterns.de.empty.some((p) => p.test(text));
   const enEmpty = gmailTextPatterns.en.empty.some((p) => p.test(text));
-  const hasMailRows = document.querySelector('[role="listitem"], tr[role="row"]') !== null;
-  return (deEmpty || enEmpty) && !hasMailRows;
+  // CUR-008: scope the row check to the verified mail list, not the whole
+  // document, so unrelated global rows no longer mask a genuinely empty result.
+  return (deEmpty || enEmpty) && !hasScopedMailRows();
 }
 
 function isLoading(): boolean {

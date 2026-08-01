@@ -288,12 +288,13 @@ describe("QA section 11 — safe-mode regression tests", () => {
     it("invalidateOnRouteChange during the grace window is a no-op", async () => {
       vi.useFakeTimers();
       const { store, c } = await driveToSearchReadyManual();
-      // The controller arms a 3s grace window after the search resolves so that
-      // the route-observer's debounced mutation (from Gmail applying the search)
-      // cannot invalidate the session. We are inside that window here.
+      // CUR-009: the controller arms a 500ms grace window after the search
+      // resolves so the route-observer's debounced mutation (from Gmail applying
+      // the search) cannot invalidate the session. We are inside that window
+      // here.
       expect(store.getState().workflow).toBe("SEARCH_READY_MANUAL");
-      // Advancing less than the 3s grace keeps us inside it.
-      vi.advanceTimersByTime(1000);
+      // Advancing less than the 500ms grace keeps us inside it.
+      vi.advanceTimersByTime(200);
       c.invalidateOnRouteChange();
       // No ROUTE_CONTEXT_INVALIDATED dispatched: workflow must be unchanged and
       // the analysis must still be present.
@@ -305,8 +306,9 @@ describe("QA section 11 — safe-mode regression tests", () => {
     it("invalidateOnRouteChange fires once the grace window has elapsed", async () => {
       vi.useFakeTimers();
       const { store, c } = await driveToSearchReadyManual();
-      // After 3s+ the grace window has closed; a route change now invalidates.
-      vi.advanceTimersByTime(4000);
+      // CUR-009: after 500ms+ the grace window has closed; a route change now
+      // invalidates.
+      vi.advanceTimersByTime(1000);
       c.invalidateOnRouteChange();
       expect(store.getState().workflow).toBe("IDLE");
       expect(store.getState().analysis).toBeNull();

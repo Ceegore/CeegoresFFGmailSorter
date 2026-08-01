@@ -19,12 +19,19 @@ if (status.trim()) {
 }
 
 // REL-002: run verification gates (minus e2e and audit, which need extra setup)
-// before building so package never emits an unverified release.
+// before building so package never emits an unverified release. The earlier
+// version only ran format/lint/typecheck/test, leaving the manifest contract,
+// the no-network guarantee, the dist self-check, and the web-ext lint unrun —
+// any of which could ship a non-conformant or AMO-rejected build. The
+// source-only gate (verify:no-network) runs here; the dist-dependent gates
+// (verify:manifest, verify:dist, webext:lint) run after the fresh build below
+// so they verify the exact bytes being shipped.
 console.log("Running verification gates...");
 await exec("npm", ["run", "format:check"], { shell: true });
 await exec("npm", ["run", "lint"], { shell: true });
 await exec("npm", ["run", "typecheck"], { shell: true });
 await exec("npm", ["run", "test"], { shell: true });
+await exec("npm", ["run", "verify:no-network"], { shell: true });
 
 // ITI-063: rebuild dist from source before packaging so a stale/older dist can
 // never be bundled into a release artifact. build.mjs resolves its own root via
@@ -34,6 +41,13 @@ console.log("Building fresh dist...");
 await exec(process.execPath, [resolve("scripts/build.mjs")], {
   shell: false,
 });
+
+// REL-002: now that a fresh dist exists, run the dist-dependent verification
+// gates against the exact bytes that will be packaged.
+console.log("Verifying fresh dist...");
+await exec("npm", ["run", "verify:manifest"], { shell: true });
+await exec("npm", ["run", "verify:dist"], { shell: true });
+await exec("npm", ["run", "webext:lint"], { shell: true });
 
 await rm(releaseDir, { recursive: true, force: true });
 await mkdir(releaseDir, { recursive: true });

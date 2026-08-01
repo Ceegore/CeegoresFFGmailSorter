@@ -99,6 +99,17 @@ export function bootstrap(): void {
     if (runtime?.onMessage) {
       type RuntimeListener = Parameters<typeof runtime.onMessage.addListener>[0];
       const listener: RuntimeListener = (message: unknown): Promise<ContentResponse> => {
+        // CUR-036: a toolbar toggle arriving between Gmail removing the overlay
+        // host and the next route-observer callback would render into a detached
+        // shadow root (silently doing nothing). The route observer re-appends the
+        // host on every route change, but a message can arrive in the gap. Re-
+        // attach first so the toggle/SHOW takes effect immediately; if the host
+        // was already attached this is a harmless no-op append of an existing
+        // child (the DOM treats it as a move, which is safe here).
+        if (!host.isConnected) {
+          document.documentElement.append(host);
+          renderApp(shadow, store.getState(), controller);
+        }
         const typed = message as Partial<BackgroundToContentMessage>;
         if (typed.type !== "TOGGLE_OVERLAY" && typed.type !== "SHOW_OVERLAY") {
           return Promise.resolve<ContentResponse>({ ok: false, error: "Unsupported message" });

@@ -20,6 +20,14 @@ if (!cs) fail("content_scripts must have at least one entry");
 if (!cs.matches?.includes("https://mail.google.com/*")) fail("content_scripts must match Gmail");
 if (!cs.js?.includes("content.js")) fail("content_scripts must include content.js");
 if (cs.run_at !== "document_idle") fail("content_scripts run_at must be document_idle");
+// GATE-002: tighten content_scripts to EXACTLY one match and one script. The
+// previous check used .includes(), so a manifest with extra match patterns
+// (e.g. http://*, all_urls) or extra injected scripts would still pass. Lock it
+// down so packaging can never ship a broader host scope than intended.
+if (cs.matches.length !== 1 || cs.matches[0] !== "https://mail.google.com/*")
+  fail("content_scripts matches must be exactly [https://mail.google.com/*]");
+if (cs.js.length !== 1 || cs.js[0] !== "content.js")
+  fail("content_scripts js must be exactly [content.js]");
 if (JSON.stringify(manifest.host_permissions) !== JSON.stringify(["https://mail.google.com/*"]))
   fail("host_permissions must be exactly Gmail");
 if (manifest.incognito !== "not_allowed") fail("incognito must be not_allowed");
@@ -39,6 +47,7 @@ if (manifest.content_security_policy?.extension_pages?.includes("unsafe-eval"))
 // GATE-002: tighten the manifest contract.
 if (manifest.optional_permissions && manifest.optional_permissions.length > 0)
   fail("optional_permissions must be empty");
+if (manifest.optional_host_permissions) fail("optional_host_permissions is forbidden");
 if (manifest.externally_connectable) fail("externally_connectable is forbidden");
 if (manifest.web_accessible_resources) fail("web_accessible_resources is forbidden");
 if (!Array.isArray(manifest.content_scripts) || manifest.content_scripts.length !== 1)

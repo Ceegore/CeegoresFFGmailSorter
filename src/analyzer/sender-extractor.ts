@@ -20,6 +20,31 @@ const HIGH_SOURCES: ReadonlySet<SenderIdentity["source"]> = new Set([
   "data-email",
 ]);
 
+/**
+ * CUR-020: test whether a sender-attribute-bearing element is part of a
+ * recipient/contact/calendar widget rather than a genuine sender element.
+ * querySelectorAll(row, "[email]") previously scanned EVERY email-bearing
+ * descendant, including the recipient/contact/attendee spans Gmail renders
+ * inside a thread row, which created false sender conflicts (a thread listing
+ * several recipients resolved to "unresolved" even when the sender was clear).
+ *
+ * We must NOT collapse the scan to the first sender cell, because legitimate
+ * multi-participant threads render MULTIPLE sibling sender elements at the row
+ * level (ITI-015) and those must still trip the conflict guard. The structural
+ * difference is region: recipient/contact widgets live inside an explicit
+ * recipient region (an aria/role marker or a Gmail "to/cc/bcc" container),
+ * whereas sender elements live in the row's sender column. This predicate
+ * returns true for elements inside such a recipient region so they can be
+ * excluded from the sender scan.
+ */
+function isInsideRecipientWidget(el: HTMLElement): boolean {
+  return el.closest<HTMLElement>(
+    '[role="listitem"][data-recipient], [aria-label*="Empfänger" i], [aria-label*="recipient" i], [aria-label*="To" i], [aria-label*="Cc" i], [aria-label*="Bcc" i], .recipient, .contact-widget',
+  )
+    ? true
+    : false;
+}
+
 function readAttributeSources(row: HTMLElement): SenderObservation[] {
   const obs: SenderObservation[] = [];
 
@@ -30,6 +55,8 @@ function readAttributeSources(row: HTMLElement): SenderObservation[] {
   // the existing conflict detection (uniqueEmails.size > 1) fires correctly.
   // BUG-012: these attributes are sender-specific and do not appear on
   // subject/attachment elements.
+  // CUR-020: skip elements that belong to a recipient/contact/calendar widget
+  // (see isInsideRecipientWidget) so those do not create false conflicts.
 
   // Email attribute
   const rowEmail = row.getAttribute("email");
@@ -37,6 +64,7 @@ function readAttributeSources(row: HTMLElement): SenderObservation[] {
     obs.push(observe("email-attribute", rowEmail));
   }
   for (const el of row.querySelectorAll<HTMLElement>("[email]")) {
+    if (isInsideRecipientWidget(el)) continue;
     const val = el.getAttribute("email");
     if (val) obs.push(observe("email-attribute", val));
   }
@@ -45,6 +73,7 @@ function readAttributeSources(row: HTMLElement): SenderObservation[] {
   const hover = row.getAttribute("data-hovercard-id");
   if (hover) obs.push(observe("hovercard-id", hover));
   for (const el of row.querySelectorAll<HTMLElement>("[data-hovercard-id]")) {
+    if (isInsideRecipientWidget(el)) continue;
     const val = el.getAttribute("data-hovercard-id");
     if (val) obs.push(observe("hovercard-id", val));
   }
@@ -53,6 +82,7 @@ function readAttributeSources(row: HTMLElement): SenderObservation[] {
   const dataEmail = row.getAttribute("data-email");
   if (dataEmail) obs.push(observe("data-email", dataEmail));
   for (const el of row.querySelectorAll<HTMLElement>("[data-email]")) {
+    if (isInsideRecipientWidget(el)) continue;
     const val = el.getAttribute("data-email");
     if (val) obs.push(observe("data-email", val));
   }

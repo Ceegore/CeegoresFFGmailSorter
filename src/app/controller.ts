@@ -178,7 +178,14 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
           evidence = await submitAndWaitUntilReady(query, signal);
         } finally {
           expectedRouteTransition = false;
-          expectedRouteGraceUntil = performance.now() + 3000; // 3s grace for debounced observer
+          // CUR-009: the grace window only needs to cover the route observer's
+          // debounced callback firing AFTER the search resolves. That debounce is
+          // at most 150ms (normal) or 500ms (burst), and hashchange/pushState/
+          // popstate fire immediately. A 500ms grace is therefore sufficient and
+          // keeps the previous 3s window from masking a same-account navigation
+          // AWAY from the search results (e.g. the user clicking a label) for the
+          // first 2.5s.
+          expectedRouteGraceUntil = performance.now() + 500;
         }
         // Empty results end the workflow for this group with an error.
         if (evidence.emptyStateDetected && !evidence.mailListDetected) {
