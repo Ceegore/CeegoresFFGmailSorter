@@ -53,10 +53,27 @@ export function buildDiagnosticDto(fields: {
   readonly evidenceCodes: readonly string[];
   readonly timings: Readonly<Record<string, number>>;
 }): DiagnosticExportV1 {
+  // GATE-005: validate workflow and adapterVersion before they enter the DTO.
+  const sanitizedWorkflow = /^[A-Z_]+$/u.test(fields.workflow) ? fields.workflow : "UNKNOWN";
+  const sanitizedVersion = /^\d{4}\.\d{2}\.\d+$/u.test(fields.adapterVersion)
+    ? fields.adapterVersion
+    : "unknown";
+  // GATE-005: sanitize timing keys (alphanumeric) and values (finite, non-negative).
+  const sanitizedTimings: Record<string, number> = {};
+  for (const [key, value] of Object.entries(fields.timings)) {
+    if (
+      /^[a-zA-Z0-9_]+$/u.test(key) &&
+      typeof value === "number" &&
+      Number.isFinite(value) &&
+      value >= 0
+    ) {
+      sanitizedTimings[key] = value;
+    }
+  }
   return {
     schemaVersion: 1,
-    adapterVersion: fields.adapterVersion,
-    workflow: fields.workflow,
+    adapterVersion: sanitizedVersion,
+    workflow: sanitizedWorkflow,
     // Sanitize: only allow short alphanumeric/dash codes.
     errorCodes: fields.errorCodes.filter((c) => /^GISO-[A-Z0-9-]+$/u.test(c)).slice(0, 50),
     rowCount: Math.max(0, Math.floor(fields.rowCount)),
@@ -65,7 +82,7 @@ export function buildDiagnosticDto(fields: {
     duplicateCount: Math.max(0, Math.floor(fields.duplicateCount)),
     weakFingerprintCount: Math.max(0, Math.floor(fields.weakFingerprintCount)),
     evidenceCodes: fields.evidenceCodes.filter((c) => /^GISO-[A-Z0-9-]+$/u.test(c)).slice(0, 50),
-    timings: fields.timings,
+    timings: sanitizedTimings,
   };
 }
 

@@ -46,5 +46,11 @@ primary mailbox (see `docs/KNOWN_LIMITATIONS.md`).
 
 ## Status
 
-V1 implementation through Phase 08; the full automated gate chain is green.
-Live-Gmail acceptance (Phase 11) and AMO submission (Phase 12) are human-owned.
+V1 implementation with automated gates green (typecheck, lint, unit/integration
+tests, build, web-ext lint). SAFE_MODE is enabled — the extension analyzes the
+inbox, groups senders, submits the Gmail search, and then stops for manual
+operation. The automated selection/move path is disabled and must not be
+enabled until independently regression-tested.
+
+Live-Gmail acceptance (Phase 11) and AMO submission (Phase 12) are human-owned
+and not yet completed.

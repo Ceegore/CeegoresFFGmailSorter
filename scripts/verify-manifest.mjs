@@ -36,5 +36,12 @@ if (manifest.background?.service_worker) fail("Firefox-only V1 must not declare 
 if (manifest.update_url) fail("update_url is forbidden for AMO release");
 if (manifest.content_security_policy?.extension_pages?.includes("unsafe-eval"))
   fail("unsafe-eval is forbidden");
+// GATE-002: tighten the manifest contract.
+if (manifest.optional_permissions && manifest.optional_permissions.length > 0)
+  fail("optional_permissions must be empty");
+if (manifest.externally_connectable) fail("externally_connectable is forbidden");
+if (manifest.web_accessible_resources) fail("web_accessible_resources is forbidden");
+if (!Array.isArray(manifest.content_scripts) || manifest.content_scripts.length !== 1)
+  fail("content_scripts must have exactly one entry");
 if (process.exitCode) process.exit(process.exitCode);
 console.log("Manifest contract verified.");
