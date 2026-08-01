@@ -1,31 +1,82 @@
-// Diagnostic export tests (spec §57.4, A.7): redaction runs, leak scan blocks
-// exports containing plaintext emails/queries, 2MB cap, blob is JSON.
+// Diagnostic export tests (BUG-049/065). Proves the explicit DTO model:
+// only numbers/booleans/codes are accepted; fingerprints, emails, thread-IDs,
+// and raw state objects are never in the export.
 import { describe, expect, it } from "vitest";
-import { createDiagnosticBlob } from "@/privacy/diagnostic-export";
+import { buildDiagnosticDto, createDiagnosticBlob } from "@/privacy/diagnostic-export";
 
-describe("createDiagnosticBlob", () => {
-  it("produces a JSON blob with redacted content", async () => {
-    const blob = await createDiagnosticBlob({
-      code: "GISO-INTERNAL-001",
-      sender: { displayName: "Alice", email: "alice@example.com" },
-      subject: "Private subject",
-      note: "contact alice@example.com please",
+describe("buildDiagnosticDto (BUG-049)", () => {
+  it("builds a clean DTO from allowlisted fields", () => {
+    const dto = buildDiagnosticDto({
+      adapterVersion: "2026.07.1",
+      workflow: "RESULTS_READY",
+      errorCodes: ["GISO-SEARCH-TIMEOUT-001"],
+      rowCount: 42,
+      resolvedCount: 40,
+      unresolvedCount: 2,
+      duplicateCount: 1,
+      weakFingerprintCount: 0,
+      evidenceCodes: ["GISO-STATE-ILLEGAL-001"],
+      timings: { analyze: 1200 },
     });
-    expect(blob.type).toBe("application/json");
-    const text = await blob.text();
-    // Key-based redaction: displayName/email/subject values become [REDACTED].
-    expect(text).not.toContain("alice@example.com");
-    expect(text).not.toContain("Alice");
-    expect(text).not.toContain("Private subject");
-    // Value-based redaction: an email inside a non-forbidden key string is hashed.
-    expect(text).toContain("email_sha256_12:");
+    expect(dto.schemaVersion).toBe(1);
+    expect(dto.rowCount).toBe(42);
+    expect(dto.errorCodes).toEqual(["GISO-SEARCH-TIMEOUT-001"]);
   });
 
-  it("redacts an email inside an allowlisted key's value too", async () => {
-    // evidenceCodes is allowlisted by key, but the value still gets string-redacted.
-    const blob = await createDiagnosticBlob({ evidenceCodes: "raw a@b.com value" });
+  it("filters out non-code strings from errorCodes", () => {
+    const dto = buildDiagnosticDto({
+      adapterVersion: "1",
+      workflow: "IDLE",
+      errorCodes: ["GISO-VALID-001", "not-a-code", "alice@example.com", ""],
+      rowCount: 0,
+      resolvedCount: 0,
+      unresolvedCount: 0,
+      duplicateCount: 0,
+      weakFingerprintCount: 0,
+      evidenceCodes: [],
+      timings: {},
+    });
+    expect(dto.errorCodes).toEqual(["GISO-VALID-001"]);
+  });
+});
+
+describe("createDiagnosticBlob (BUG-049 leak scan)", () => {
+  it("produces a clean JSON blob", async () => {
+    const dto = buildDiagnosticDto({
+      adapterVersion: "1",
+      workflow: "IDLE",
+      errorCodes: [],
+      rowCount: 0,
+      resolvedCount: 0,
+      unresolvedCount: 0,
+      duplicateCount: 0,
+      weakFingerprintCount: 0,
+      evidenceCodes: [],
+      timings: {},
+    });
+    const blob = await createDiagnosticBlob(dto);
+    expect(blob.type).toBe("application/json");
     const text = await blob.text();
-    expect(text).not.toContain("a@b.com");
-    expect(text).not.toContain("@b.com");
+    expect(text).not.toContain("@");
+    expect(text).toContain("schemaVersion");
+  });
+
+  it("rejects a DTO that somehow contains a thread-ID fingerprint", async () => {
+    // Manually craft a malicious DTO (bypassing buildDiagnosticDto).
+    const malicious = {
+      schemaVersion: 1,
+      adapterVersion: "1",
+      workflow: "IDLE",
+      errorCodes: ["attr:data-thread-id:FMfcggx123"],
+      rowCount: 0,
+      resolvedCount: 0,
+      unresolvedCount: 0,
+      duplicateCount: 0,
+      weakFingerprintCount: 0,
+      evidenceCodes: [],
+      timings: {},
+    } as const;
+    // The leak scan catches the fingerprint pattern.
+    await expect(createDiagnosticBlob(malicious)).rejects.toThrow(/leak scan/u);
   });
 });
