@@ -30,7 +30,7 @@ const spies = vi.hoisted(() => ({
 }));
 
 vi.mock("@/gmail/search-controller", () => ({
-  buildInboxSenderQuery: (email: string) => `in:inbox "from:${email}"`,
+  buildInboxSenderQuery: (email: string) => `in:inbox has:nouserlabels "from:${email}"`,
   submitAndWaitUntilReady: spies.submitAndWait,
 }));
 vi.mock("@/gmail/selection-controller", () => ({

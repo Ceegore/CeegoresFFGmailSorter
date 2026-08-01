@@ -68,7 +68,7 @@ describe("ROUND2: CONFIRM_SEARCH renders confirm-search view (BUG-001)", () => {
     expect(confirmBtn).not.toBeNull();
     expect(confirmBtn?.textContent).toBe(de.startSearch);
     const queryEl = shadow.querySelector('[data-testid="giso-confirm-query"]');
-    expect(queryEl?.textContent).toBe('in:inbox "from:a@example.com"');
+    expect(queryEl?.textContent).toBe('in:inbox has:nouserlabels "from:a@example.com"');
   });
 
   it("does NOT show the group list in CONFIRM_SEARCH", () => {

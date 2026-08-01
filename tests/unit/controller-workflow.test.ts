@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Stub the Gmail controllers so confirmSearch runs without real DOM operations.
 vi.mock("@/gmail/search-controller", () => ({
-  buildInboxSenderQuery: (email: string) => `in:inbox "from:${email}"`,
+  buildInboxSenderQuery: (email: string) => `in:inbox has:nouserlabels "from:${email}"`,
   submitAndWaitUntilReady: vi.fn(() =>
     Promise.resolve({
       queryMatches: true,
@@ -94,7 +94,9 @@ describe("controller workflow", () => {
     await c.confirmSearch();
     // SAFE_MODE: the workflow stops after the verified search; no auto selection/move.
     expect(store.getState().workflow).toBe("SEARCH_READY_MANUAL");
-    expect(store.getState().expectedQuery).toContain('in:inbox "from:a@example.com"');
+    expect(store.getState().expectedQuery).toContain(
+      'in:inbox has:nouserlabels "from:a@example.com"',
+    );
     // The group is in-progress (set before search); the user completes manually.
     expect(store.getState().analysis?.groups[0]?.status).toBe("in-progress");
     c.dispose();
@@ -206,7 +208,10 @@ describe("controller workflow", () => {
     store.dispatch({ type: "SELECT_GROUP", groupId: "sender:a@example.com" });
     store.dispatch({ type: "CONFIRM_SEARCH" });
     store.dispatch({ type: "MARK_GROUP_IN_PROGRESS", groupId: "sender:a@example.com" });
-    store.dispatch({ type: "SEARCH_SUBMITTED", query: 'in:inbox "from:a@example.com"' });
+    store.dispatch({
+      type: "SEARCH_SUBMITTED",
+      query: 'in:inbox has:nouserlabels "from:a@example.com"',
+    });
     // Now in WAITING_SEARCH_RESULTS (critical). cancel aborts and (BUG-050)
     // auto-returns to RESULTS_READY since analysis exists; group restored to ready.
     c.cancel();
@@ -272,7 +277,10 @@ describe("controller workflow", () => {
     store.dispatch({ type: "CONFIRM_SEARCH" });
     store.dispatch({ type: "MARK_GROUP_IN_PROGRESS", groupId: "sender:a@example.com" });
     // Drive to VERIFYING_COMPLETION.
-    store.dispatch({ type: "SEARCH_SUBMITTED", query: 'in:inbox "from:a@example.com"' });
+    store.dispatch({
+      type: "SEARCH_SUBMITTED",
+      query: 'in:inbox has:nouserlabels "from:a@example.com"',
+    });
     store.dispatch({ type: "SEARCH_READY" });
     store.dispatch({ type: "PAGE_SELECTED" });
     store.dispatch({ type: "ALL_SELECTED" });

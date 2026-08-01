@@ -41,7 +41,7 @@ describe("AUDIT: end-to-end analyze -> query chain", () => {
     expect(result.rowCount).toBeGreaterThan(0);
     for (const group of result.groups) {
       const q = buildInboxSenderQuery(group.normalizedEmail);
-      expect(q.startsWith('in:inbox "from:')).toBe(true);
+      expect(q.startsWith("in:inbox ")).toBe(true);
       expect(q.endsWith('"')).toBe(true);
       // No unquoted from: (AUD-009 alias-expansion guard).
       expect(q).toContain('"from:');

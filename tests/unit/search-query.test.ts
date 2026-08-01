@@ -3,10 +3,14 @@ import { buildInboxSenderQuery, normalizeQueryForComparison } from "@/gmail/sear
 
 describe("buildInboxSenderQuery", () => {
   it("produces the exact quoted inbox query", () => {
-    expect(buildInboxSenderQuery("news@example.com")).toBe('in:inbox "from:news@example.com"');
+    expect(buildInboxSenderQuery("news@example.com")).toBe(
+      'in:inbox has:nouserlabels "from:news@example.com"',
+    );
   });
   it("normalizes case before building", () => {
-    expect(buildInboxSenderQuery("NEWS@Example.COM")).toBe('in:inbox "from:news@example.com"');
+    expect(buildInboxSenderQuery("NEWS@Example.COM")).toBe(
+      'in:inbox has:nouserlabels "from:news@example.com"',
+    );
   });
   it("rejects an invalid email", () => {
     expect(() => buildInboxSenderQuery("not-an-email")).toThrow();

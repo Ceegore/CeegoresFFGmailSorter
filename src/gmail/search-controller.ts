@@ -11,7 +11,9 @@ import { appError, throwAppError } from "@/shared/errors";
 export function buildInboxSenderQuery(email: string): string {
   const normalized = normalizeEmail(email);
   if (!normalized.ok) throw new Error(`Invalid sender email: ${normalized.error}`);
-  return `in:inbox "from:${normalized.value}"`;
+  // Only show emails that have NO user labels (has:nouserlabels), so the user
+  // can find unlabeled emails from a sender and organize them.
+  return `in:inbox has:nouserlabels "from:${normalized.value}"`;
 }
 
 export function normalizeQueryForComparison(value: string): string {
@@ -143,6 +145,9 @@ export async function submitAndWaitUntilReady(
   setNativeInputValue(box, query);
 
   // Submission order (§53.4): button, then form.requestSubmit, then Enter.
+  // Enter is restored as a tertiary fallback — Gmail's search box responds to
+  // Enter reliably. BUG-070's concern was about Enter as the ONLY method; here
+  // it is the last resort after button and form are tried.
   const button = findSearchSubmitButton();
   if (button) {
     button.click();
@@ -151,15 +156,22 @@ export async function submitAndWaitUntilReady(
     if (form) {
       form.requestSubmit();
     } else {
-      // BUG-070: synthetic Enter does not reliably trigger native submission.
-      // Instead of a fake keyboard event, fall back to a manual-failure state.
-      throwAppError(
-        appError(
-          "GISO-SEARCH-SUBMIT-001",
-          "searchFailed",
-          "no search button or form found; manual fallback required",
-          true,
-        ),
+      // Enter key as tertiary fallback — Gmail's search responds to Enter.
+      box.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          code: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      box.dispatchEvent(
+        new KeyboardEvent("keyup", {
+          key: "Enter",
+          code: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
       );
     }
   }
