@@ -9,6 +9,7 @@ import { renderBrandCredit } from "@/ui/brand-credit";
 import { renderView } from "@/ui/views";
 import {
   applyPosition,
+  loadPosition,
   persistPosition,
   wirePositioning,
   DEFAULT_POSITION,
@@ -120,26 +121,39 @@ function buildNarrowWarning(): HTMLElement {
  * Wire overlay drag/keyboard once per shell. Idempotent via a marker so
  * repeated renders do not stack listeners. Position is loaded and applied on
  * first wire; subsequent drags persist on pointerup (spec §56.5).
+ *
+ * ITI-020 / ITI-021: the persisted position is loaded BEFORE the handle is
+ * wired so (a) the internal `current` state and the visually applied position
+ * never diverge, and (b) the user cannot drag before the load resolves. A
+ * synchronous default-position placeholder is applied first to avoid a flash
+ * of an unpositioned overlay.
  */
 function wireHandleOnce(overlay: HTMLElement): void {
   if (overlay.getAttribute(POSITIONED_FLAG) === "1") return;
   overlay.setAttribute(POSITIONED_FLAG, "1");
-  applyPosition(overlay, DEFAULT_POSITION);
-  // Best-effort: load persisted position asynchronously and apply it.
-  void loadAndApply(overlay);
-  const handle = overlay.querySelector<HTMLElement>("[data-testid='giso-move-handle']");
-  if (!handle) return;
-  wirePositioning(overlay, handle, (pos) => {
-    void persistPosition(pos);
-  });
-}
-
-async function loadAndApply(overlay: HTMLElement): Promise<void> {
-  try {
-    const { loadPosition } = await import("@/ui/overlay-position");
-    const pos = await loadPosition();
-    applyPosition(overlay, pos);
-  } catch {
-    /* storage unavailable in some test contexts — keep defaults */
-  }
+  applyPosition(overlay, DEFAULT_POSITION); // visual placeholder until loaded
+  void loadPosition()
+    .then((pos) => {
+      applyPosition(overlay, pos);
+      const handle = overlay.querySelector<HTMLElement>("[data-testid='giso-move-handle']");
+      if (handle) {
+        wirePositioning(
+          overlay,
+          handle,
+          (p) => {
+            void persistPosition(p);
+          },
+          pos,
+        );
+      }
+    })
+    .catch(() => {
+      applyPosition(overlay, DEFAULT_POSITION);
+      const handle = overlay.querySelector<HTMLElement>("[data-testid='giso-move-handle']");
+      if (handle) {
+        wirePositioning(overlay, handle, (p) => {
+          void persistPosition(p);
+        });
+      }
+    });
 }

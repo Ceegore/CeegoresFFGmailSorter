@@ -1,6 +1,6 @@
 // Coverage gap tests: adapter.ts detection helpers, overlay-position drag
 // pointer path, storage round-trip with a mocked browser.storage.
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { detectionFail, detectionOk, requireDetection, type Detection } from "@/gmail/adapter";
 import {
   wirePositioning,
@@ -40,6 +40,12 @@ describe("adapter detection helpers", () => {
 describe("overlay-position drag pointer path", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
+    // ITI-022: persist is debounced via window.setTimeout; use fake timers so
+    // the trailing write can be flushed synchronously.
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
   });
   it("pointerdown+move+up repositions and persists", () => {
     const overlay = document.createElement("div");
@@ -56,6 +62,7 @@ describe("overlay-position drag pointer path", () => {
     handle.dispatchEvent(
       new PointerEvent("pointerup", { clientX: 140, clientY: 100, pointerId: 1 }),
     );
+    vi.advanceTimersByTime(200);
     expect(persist).toHaveBeenCalled();
     const pos = persist.mock.calls.at(-1)?.[0];
     expect(typeof pos?.top).toBe("number");
@@ -66,6 +73,7 @@ describe("overlay-position drag pointer path", () => {
     const persist = vi.fn();
     wirePositioning(overlay, handle, persist);
     handle.dispatchEvent(new PointerEvent("pointerdown", { button: 2, pointerId: 1 }));
+    vi.advanceTimersByTime(200);
     expect(persist).not.toHaveBeenCalled();
   });
   it("ArrowLeft persists a clamped position", () => {
@@ -74,19 +82,34 @@ describe("overlay-position drag pointer path", () => {
     const persist = vi.fn<(pos: Position) => void>();
     wirePositioning(overlay, handle, persist);
     handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft" }));
+    vi.advanceTimersByTime(200);
     const pos = persist.mock.calls[0]?.[0];
     expect(pos?.right).toBe(DEFAULT_POSITION.right + 8);
   });
-  it("Escape restores pre-drag position", () => {
+  it("Escape during a drag restores pre-drag position (ITI-024)", () => {
     const overlay = document.createElement("div");
     const handle = document.createElement("button");
     const persist = vi.fn();
     wirePositioning(overlay, handle, persist);
-    // Drag first to change pre-drag baseline... actually Escape restores the
-    // position from before the CURRENT drag. Without a drag, it just re-applies
-    // the default and persists.
+    // Begin a drag so Escape has an active drag to cancel.
+    handle.dispatchEvent(
+      new PointerEvent("pointerdown", { clientX: 100, clientY: 80, button: 0, pointerId: 1 }),
+    );
+    handle.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 200, clientY: 80, pointerId: 1 }),
+    );
     handle.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    vi.advanceTimersByTime(200);
     expect(persist).toHaveBeenCalled();
+  });
+  it("Escape with no active drag does not persist (ITI-024)", () => {
+    const overlay = document.createElement("div");
+    const handle = document.createElement("button");
+    const persist = vi.fn();
+    wirePositioning(overlay, handle, persist);
+    handle.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    vi.advanceTimersByTime(200);
+    expect(persist).not.toHaveBeenCalled();
   });
   it("applyPosition sets custom props", () => {
     const el = document.createElement("div");

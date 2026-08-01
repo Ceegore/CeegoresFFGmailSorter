@@ -1,7 +1,7 @@
 // Overlay positioning tests (spec §56.5): clamp keeps header visible, default
 // position, nudge constants, applyPosition sets CSS vars. Drag/keyboard
 // interaction is exercised via pointer/key dispatch.
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyPosition,
   clampPosition,
@@ -46,12 +46,22 @@ describe("nudge constants (spec §56.5)", () => {
 });
 
 describe("wirePositioning keyboard", () => {
+  // ITI-022: persistence is debounced (200ms trailing write), so advance fake
+  // timers before asserting on the persist callback.
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("ArrowDown moves top by 8px and persists", () => {
     const overlay = document.createElement("div");
     const handle = document.createElement("button");
     const persist = vi.fn<(pos: Position) => void>();
     wirePositioning(overlay, handle, persist);
     handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    vi.advanceTimersByTime(200);
     expect(persist).toHaveBeenCalled();
     const pos = persist.mock.calls[0]?.[0];
     expect(pos?.top).toBe(DEFAULT_POSITION.top + NUDGE_PX);
@@ -64,6 +74,7 @@ describe("wirePositioning keyboard", () => {
     handle.dispatchEvent(
       new KeyboardEvent("keydown", { key: "ArrowUp", shiftKey: true, bubbles: true }),
     );
+    vi.advanceTimersByTime(200);
     const pos = persist.mock.calls[0]?.[0];
     expect(pos?.top).toBe(DEFAULT_POSITION.top - NUDGE_PX_FAST);
   });
@@ -74,6 +85,7 @@ describe("wirePositioning keyboard", () => {
     const off = wirePositioning(overlay, handle, persist);
     off();
     handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    vi.advanceTimersByTime(200);
     expect(persist).not.toHaveBeenCalled();
   });
 });
