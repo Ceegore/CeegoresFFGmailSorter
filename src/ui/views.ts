@@ -153,17 +153,30 @@ function filterAndSort(groups: readonly SenderGroup[], state: AppState): readonl
   const sorted = [...visible];
   switch (state.sort) {
     case "name":
-      sorted.sort((a, b) => a.primaryDisplayName.localeCompare(b.primaryDisplayName));
+      sorted.sort((a, b) =>
+        a.primaryDisplayName.localeCompare(b.primaryDisplayName, "de", {
+          sensitivity: "base",
+          numeric: true,
+        }),
+      );
       break;
     case "address":
-      sorted.sort((a, b) => a.normalizedEmail.localeCompare(b.normalizedEmail));
+      sorted.sort((a, b) =>
+        a.normalizedEmail.localeCompare(b.normalizedEmail, "de", {
+          sensitivity: "base",
+          numeric: true,
+        }),
+      );
       break;
     case "count":
     default:
       sorted.sort(
         (a, b) =>
           b.visibleEntryCount - a.visibleEntryCount ||
-          a.primaryDisplayName.localeCompare(b.primaryDisplayName),
+          a.primaryDisplayName.localeCompare(b.primaryDisplayName, "de", {
+            sensitivity: "base",
+            numeric: true,
+          }),
       );
       break;
   }
@@ -237,6 +250,13 @@ function* resultsView(
   }
 }
 
+function errorCodeToMessageKey(code: string): string {
+  if (code.startsWith("GISO-MOVE")) return "moveMenuFailed";
+  if (code.startsWith("GISO-SEARCH-EMPTY")) return "searchFailed";
+  if (code.startsWith("GISO-SELECT")) return "selectFailed";
+  return "internal";
+}
+
 function renderGroup(group: SenderGroup, controller: AppController): HTMLLIElement {
   const li = document.createElement("li");
   li.className = `giso-group giso-group--${group.status}`;
@@ -279,7 +299,7 @@ function renderGroup(group: SenderGroup, controller: AppController): HTMLLIEleme
     done.textContent = de.senderProcessed;
     actions.append(done);
   } else if (group.status === "error" && group.lastErrorCode) {
-    actions.append(errorBlock("moveMenuFailed", group.lastErrorCode));
+    actions.append(errorBlock(errorCodeToMessageKey(group.lastErrorCode), group.lastErrorCode));
   }
   li.append(name, email, badge, actions);
   return li;
@@ -595,10 +615,13 @@ async function copyToClipboard(text: string): Promise<void> {
     textarea.style.top = "0";
     textarea.style.left = "-9999px";
     document.body.append(textarea);
-    textarea.select();
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- legacy fallback path; execCommand is the only sync clipboard API available outside secure contexts.
-    document.execCommand("copy");
-    textarea.remove();
+    try {
+      textarea.select();
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- legacy fallback path; execCommand is the only sync clipboard API available outside secure contexts.
+      document.execCommand("copy");
+    } finally {
+      textarea.remove();
+    }
   } catch {
     /* clipboard may be unavailable; the query text remains visible to copy manually */
   }

@@ -19,7 +19,10 @@ function choosePrimaryName(names: readonly string[], fallback: string): string {
 export function compareByCountThenName(a: SenderGroup, b: SenderGroup): number {
   return (
     b.visibleEntryCount - a.visibleEntryCount ||
-    a.primaryDisplayName.localeCompare(b.primaryDisplayName)
+    a.primaryDisplayName.localeCompare(b.primaryDisplayName, "de", {
+      sensitivity: "base",
+      numeric: true,
+    })
   );
 }
 

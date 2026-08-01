@@ -137,7 +137,18 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
           return;
         }
         // Fix F-001: mark the group in-progress so completion/error can advance it.
-        dispatch({ type: "MARK_GROUP_IN_PROGRESS", groupId: group.id });
+        if (!dispatch({ type: "MARK_GROUP_IN_PROGRESS", groupId: group.id }).accepted) {
+          dispatch({
+            type: "FAIL",
+            error: appError(
+              "GISO-INTERNAL-001",
+              "internal",
+              "could not mark group in-progress",
+              true,
+            ),
+          });
+          return;
+        }
         const query = buildInboxSenderQuery(group.normalizedEmail);
         dispatch({ type: "SEARCH_SUBMITTED", query });
         // BUG-035: the search will navigate Gmail's route; that is expected.

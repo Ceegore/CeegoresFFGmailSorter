@@ -45,15 +45,12 @@ function isInboxNavActive(): boolean {
   for (const link of inboxLinks) {
     const current = link.getAttribute("aria-current");
     const selected = link.getAttribute("aria-selected");
-    const tabIndex = link.getAttribute("tabindex");
     if (current === "page" || selected === "true") return true;
-    // Gmail also uses tabindex="0" on the active nav item.
-    if (tabIndex === "0") return true;
   }
   // Fallback: if the route is exactly #inbox and there's at least one inbox
   // link present, accept (the route check already proved we're on inbox).
   const hash = location.hash;
-  if (/^#inbox\/?$/iu.test(hash) && inboxLinks.length > 0) return true;
+  if (/^#inbox$/iu.test(hash) && inboxLinks.length > 0) return true;
   return false;
 }
 
@@ -111,7 +108,7 @@ export function detectCurrentView(): Detection<GmailView> {
   // BUG-038: exact route allowlist. #inbox must be EXACTLY "#inbox" (not
   // "#inbox/<thread-id>"). #label/... is NOT inbox-like (it's a user label).
   // Only #inbox and known category routes (#category/primary etc.) are allowed.
-  const inboxRoute = /^#inbox$/iu.test(hash) || /^#inbox\/?$/iu.test(hash);
+  const inboxRoute = /^#inbox$/iu.test(hash);
   // Category routes: #category/primary, #category/promotions, etc.
   const categoryRoute = /^#category\//iu.test(hash);
   // Explicitly reject label, sent, trash, spam, drafts, settings, etc.

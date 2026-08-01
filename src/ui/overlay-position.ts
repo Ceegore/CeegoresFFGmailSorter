@@ -19,7 +19,6 @@ export function clampPosition(
   viewportWidth = window.innerWidth,
   viewportHeight = window.innerHeight,
 ): Position {
-  const overlayHeight = Math.min(viewportHeight - 112, viewportHeight);
   const maxTop = Math.max(0, viewportHeight - MIN_VISIBLE_HEADER_PX);
   const top = Math.min(Math.max(0, pos.top), maxTop);
   // right is the CSS distance from the right edge: 0 = overlay at the right
@@ -29,7 +28,6 @@ export function clampPosition(
   const minRight = 0;
   const maxRight = Math.max(0, viewportWidth - MIN_VISIBLE_HEADER_PX);
   const right = Math.min(Math.max(minRight, pos.right), maxRight);
-  void overlayHeight;
   return { top, right };
 }
 

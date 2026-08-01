@@ -40,8 +40,8 @@ export function readCompletionEvidence(input: CompletionContextInput): Completio
     matchesAny(statusText, gmailTextPatterns.de.move) ||
     matchesAny(statusText, gmailTextPatterns.en.move);
   const undoVisible =
-    gmailTextPatterns.de.undo.some((p) => p.test(statusText)) ||
-    gmailTextPatterns.en.undo.some((p) => p.test(statusText));
+    matchesAny(statusText, gmailTextPatterns.de.undo) ||
+    matchesAny(statusText, gmailTextPatterns.en.undo);
   const snackbarMoveText = moveSemantics && undoVisible;
 
   const resultRows = document.querySelectorAll('[role="listitem"], tr[role="row"]').length;

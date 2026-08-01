@@ -26,6 +26,9 @@ export function bootstrap(): void {
       s.expectedQuery ?? "",
       s.filter,
       s.sort,
+      s.activeGroupId
+        ? (s.analysis?.groups.find((g) => g.id === s.activeGroupId)?.status ?? "")
+        : "",
     ]);
     const controller = createAppController(store);
     const unsubscribe = store.subscribe((state) => {
@@ -93,6 +96,12 @@ export function bootstrap(): void {
       window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("pageshow", onPageShow);
       host.remove();
+      const testBridge = globalThis as typeof globalThis & {
+        __gisoController?: unknown;
+        __gisoShowOverlay?: unknown;
+      };
+      delete testBridge.__gisoController;
+      delete testBridge.__gisoShowOverlay;
       // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- symbol-keyed internal bootstrap guard
       delete globalState[BOOTSTRAP_KEY];
     }

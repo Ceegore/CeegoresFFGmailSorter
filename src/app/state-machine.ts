@@ -247,7 +247,7 @@ export function reduceAppState(state: AppState, event: AppEvent): AppState {
           return { ...state, workflow: "ERROR", error: event.error };
         }
         const groups = state.analysis.groups.map((g) =>
-          g.id === event.groupId && g.status === "in-progress"
+          g.id === event.groupId
             ? { ...g, status: "error" as const, lastErrorCode: event.error.code }
             : g,
         );
