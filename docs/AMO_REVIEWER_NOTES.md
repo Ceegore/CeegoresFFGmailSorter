@@ -4,19 +4,23 @@ Copy-paste reference for the AMO submission (spec §67.1–67.5).
 
 ## Purpose
 
-Inbox Sender Organizer is a Firefox-only extension for Gmail Web. It groups
-recurring senders found on the currently loaded inbox page. For a sender
-explicitly selected by the user, it inserts the exact query
-`in:inbox "from:sender@example.com"` into Gmail's native search UI, verifies
-the visible search result state, selects the current page, attempts Gmail's
-native “select all matching results” action, and opens Gmail's native “Move to”
-menu. The extension never chooses a destination label; the user must do so in
-Gmail.
+Inbox Sender Organizer is a Firefox-only extension for Gmail Web. It analyzes
+the currently loaded inbox page, extracts sender addresses from the visible
+DOM, and groups recurring senders so the user can see at a glance who sends
+the most mail. For a sender explicitly selected by the user, the extension
+builds the exact quoted query `in:inbox "from:sender@example.com"`, inserts it
+into Gmail's native search field, and verifies the visible search-result state.
+
+In the current version (SAFE_MODE), the extension **does not** perform any
+automatic selection, select-all, or move-menu clicks. Instead, after the
+verified search it surfaces the query (with a copy button and manual
+instructions) for the user to act on manually in Gmail's own UI. The user
+performs selection and the “Move to” action themselves and then marks the
+group as done in the overlay.
 
 ## Permissions
 
-- `storage`: local UI settings only (overlay position, diagnostics enabled,
-  auto-open-move preference).
+- `storage`: local UI settings only (overlay position).
 - `https://mail.google.com/*`: read the visible Gmail DOM and operate visible
   native controls.
 
@@ -29,7 +33,8 @@ only in content-script memory for the active tab session and are not persisted.
 When the user confirms a sender workflow, the selected sender address is placed
 into Gmail's own search field; Google processes that query as part of the
 user's normal Gmail action. No such value is sent to the developer or another
-developer-controlled service.
+developer-controlled service. The extension performs no automatic Gmail actions
+in SAFE_MODE — selection and move are done manually by the user.
 
 ## Manifest privacy declaration
 
@@ -62,9 +67,10 @@ not a link and performs no tracking or external navigation.
 4. Click “Posteingang analysieren”.
 5. Choose a sender group with at least two entries.
 6. Confirm the exact quoted sender query.
-7. Observe native Gmail search and selection UI.
-8. Choose a test label manually in Gmail's native “Move to” menu.
-9. Confirm completion or the conservative manual fallback.
+7. Observe that Gmail runs the native search (no further automatic action is
+   taken by the extension in SAFE_MODE).
+8. Perform selection and the “Move to” action manually in Gmail's native UI.
+9. Mark the sender group done in the overlay when finished.
 
 ## Safety behavior
 
@@ -88,6 +94,7 @@ niemals E-Mail-Adressen oder Nachrichteninformationen.
 
 ## AMO-Kurzbeschreibung
 
-Gruppiert wiederkehrende Absender auf der geladenen Gmail-Inbox-Seite und führt
-kontrolliert zu Gmails nativer Auswahl und „Verschieben nach“-Funktion – ohne
-Gmail API, OAuth, Tracking oder eigenen Server.
+Gruppiert wiederkehrende Absender auf der geladenen Gmail-Inbox-Seite und fügt
+für einen ausgewählten Absender die exakte Suchanfrage in Gmails native Suche
+ein. Auswahl und „Verschieben nach“ erfolgen manuell durch die Nutzerin oder
+den Nutzer – ohne Gmail API, OAuth, Tracking oder eigenen Server.

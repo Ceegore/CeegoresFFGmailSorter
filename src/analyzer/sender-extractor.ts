@@ -71,7 +71,7 @@ function observe(source: SenderIdentity["source"], raw: string): SenderObservati
       raw,
       email: null,
       displayName: raw.trim() || null,
-      confidence: source === "visible-text" ? "low" : "low",
+      confidence: "low" as const,
     };
   }
   const email = parsed.value.email;

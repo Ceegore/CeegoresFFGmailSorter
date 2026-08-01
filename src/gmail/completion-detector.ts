@@ -28,7 +28,8 @@ function readStatusText(): string {
     if (region.closest("#giso-extension-root")) continue;
     const label = region.getAttribute("aria-label") ?? "";
     const text = region.textContent || "";
-    parts.push(`${label} ${text}`.trim());
+    if (label) parts.push(label);
+    if (text) parts.push(text);
   }
   return parts.join(" ");
 }
@@ -61,10 +62,11 @@ export function readCompletionEvidence(input: CompletionContextInput): Completio
   // BUG-037: scoring with deduplicated signals. Each evidence category counts
   // at most once. An empty list alone (without action evidence) can never
   // reach the threshold.
-  // ACTION evidence: snackbar + undo (the strongest single signal).
+  // ACTION evidence: snackbar + undo (the strongest single signal). This is
+  // one signal; do not double-count it (snackbarMoveText already requires
+  // both move semantics and an undo affordance).
   let actionScore = 0;
   if (snackbarMoveText) actionScore += 60;
-  if (undoVisible && moveSemantics) actionScore += 25;
 
   // RESULT evidence: decreased count or empty list (but NOT both — they're
   // correlated when the list goes to zero).

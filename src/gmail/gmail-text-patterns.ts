@@ -13,7 +13,7 @@ export const gmailTextPatterns = {
     deselect: [/auswahl aufheben/i, /keine auswählen/i],
     move: [/^verschieben nach$/i, /^verschieben$/i, /in .* verschieben/i, /verschieben nach/iu],
     createNew: [/^neu erstellen$/i, /^neues label/i],
-    undo: [/^rückgängig$/i, /rückgängig/iu],
+    undo: [/rückgängig/iu],
     loading: [/wird geladen/i, /laden/i],
     empty: [/keine e-mails/i, /keine nachrichten/i, /keine treffer/i],
     related: [/ähnliche ergebnisse/i, /verwandte ergebnisse/i],

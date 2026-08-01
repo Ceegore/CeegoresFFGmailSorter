@@ -253,6 +253,7 @@ function* resultsView(
 function errorCodeToMessageKey(code: string): string {
   if (code.startsWith("GISO-MOVE")) return "moveMenuFailed";
   if (code.startsWith("GISO-SEARCH-EMPTY")) return "searchFailed";
+  if (code.startsWith("GISO-SEARCH")) return "searchFailed";
   if (code.startsWith("GISO-SELECT")) return "selectFailed";
   return "internal";
 }

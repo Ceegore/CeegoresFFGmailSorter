@@ -8,10 +8,8 @@ import { createStore } from "@/app/store";
 import { createAppController } from "@/app/controller";
 import { renderApp } from "@/ui/render";
 import { ensureOverlayHost } from "@/ui/overlay-host";
-import type { AnalysisResult, SenderGroup } from "@/shared/types";
 import { de } from "@/i18n/de";
-
-const group = (id: string, email: string): SenderGroup => ({
+const group = (id, email) => ({
   id: `sender:${email}`,
   normalizedEmail: email,
   displayNames: ["A"],
@@ -21,8 +19,7 @@ const group = (id: string, email: string): SenderGroup => ({
   confidence: "high",
   status: "ready",
 });
-
-const analysis = (groups: SenderGroup[]): AnalysisResult => ({
+const analysis = (groups) => ({
   startedAt: 0,
   completedAt: 0,
   sourceRoute: { accountSlot: 0, view: "inbox", fingerprint: "fp" },
@@ -34,15 +31,13 @@ const analysis = (groups: SenderGroup[]): AnalysisResult => ({
   groups,
   unresolvedEntries: [],
 });
-
-const acceptance = (s: typeof initialState) => [
+const acceptance = (s) => [
   s.workflow,
   s.activeGroupId,
   s.error?.code ?? "",
   s.analysis !== null,
   s.overlayVisible,
 ];
-
 // ---- PROBE A: CONFIRM_SEARCH view actually renders the confirm button ----
 describe("ROUND2: CONFIRM_SEARCH renders confirm-search view (BUG-001)", () => {
   beforeEach(() => {
@@ -50,7 +45,6 @@ describe("ROUND2: CONFIRM_SEARCH renders confirm-search view (BUG-001)", () => {
       el.remove();
     });
   });
-
   it("shows the 'Suche starten' button and the exact query", () => {
     const store = createStore(initialState, reduceAppState, acceptance);
     const c = createAppController(store);
@@ -59,7 +53,7 @@ describe("ROUND2: CONFIRM_SEARCH renders confirm-search view (BUG-001)", () => {
     const state = {
       ...initialState,
       overlayVisible: true,
-      workflow: "CONFIRM_SEARCH" as const,
+      workflow: "CONFIRM_SEARCH",
       activeGroupId: g.id,
       analysis: analysis([g]),
     };
@@ -70,7 +64,6 @@ describe("ROUND2: CONFIRM_SEARCH renders confirm-search view (BUG-001)", () => {
     const queryEl = shadow.querySelector('[data-testid="giso-confirm-query"]');
     expect(queryEl?.textContent).toBe('in:inbox "from:a@example.com"');
   });
-
   it("does NOT show the group list in CONFIRM_SEARCH", () => {
     const store = createStore(initialState, reduceAppState, acceptance);
     const c = createAppController(store);
@@ -79,7 +72,7 @@ describe("ROUND2: CONFIRM_SEARCH renders confirm-search view (BUG-001)", () => {
     const state = {
       ...initialState,
       overlayVisible: true,
-      workflow: "CONFIRM_SEARCH" as const,
+      workflow: "CONFIRM_SEARCH",
       activeGroupId: g.id,
       analysis: analysis([g]),
     };
@@ -89,7 +82,6 @@ describe("ROUND2: CONFIRM_SEARCH renders confirm-search view (BUG-001)", () => {
     expect(shadow.querySelector('[data-testid="giso-group-list"]')).toBeNull();
   });
 });
-
 // ---- PROBE B: back button from CONFIRM_SEARCH returns to RESULTS_READY ----
 describe("ROUND2: CONFIRM_SEARCH back button", () => {
   it("RETURN_TO_RESULTS is legal from CONFIRM_SEARCH and returns to RESULTS_READY", () => {
@@ -99,7 +91,7 @@ describe("ROUND2: CONFIRM_SEARCH back button", () => {
     const s = reduceAppState(
       {
         ...initialState,
-        workflow: "CONFIRM_SEARCH" as const,
+        workflow: "CONFIRM_SEARCH",
         activeGroupId: g.id,
         analysis: analysis([g]),
       },
@@ -109,7 +101,6 @@ describe("ROUND2: CONFIRM_SEARCH back button", () => {
     expect(s.activeGroupId).toBeNull();
   });
 });
-
 // ---- PROBE C: SAFE_MODE flag is consistently applied everywhere ----
 describe("ROUND2: no auto-click path reachable in safe mode", () => {
   it("SELECTING_PAGE is reachable via state machine but gated by SAFE_MODE in controller", () => {
@@ -120,13 +111,12 @@ describe("ROUND2: no auto-click path reachable in safe mode", () => {
     // SEARCH_READY. So the SELECTING_PAGE path exists in the graph but is never
     // entered while the safe-mode guard is active.
     const s = reduceAppState(
-      { ...initialState, workflow: "WAITING_SEARCH_RESULTS" as const },
+      { ...initialState, workflow: "WAITING_SEARCH_RESULTS" },
       { type: "SEARCH_READY" },
     );
     expect(s.workflow).toBe("SELECTING_PAGE"); // state machine allows it
   });
 });
-
 // ---- PROBE D: WORKFLOW_FAILED with non-active group ----
 describe("ROUND2: WORKFLOW_FAILED ignores non-active group", () => {
   it("WORKFLOW_FAILED for a different group only sets ERROR, doesn't touch groups", () => {
@@ -135,7 +125,7 @@ describe("ROUND2: WORKFLOW_FAILED ignores non-active group", () => {
     const s = reduceAppState(
       {
         ...initialState,
-        workflow: "WAITING_SEARCH_RESULTS" as const,
+        workflow: "WAITING_SEARCH_RESULTS",
         activeGroupId: g1.id,
         analysis: analysis([g1, g2]),
       },
@@ -155,7 +145,6 @@ describe("ROUND2: WORKFLOW_FAILED ignores non-active group", () => {
     expect(s.analysis?.groups[1]?.status).toBe("ready");
   });
 });
-
 // ---- PROBE E: diagnostics cap is still enforced after new events ----
 describe("ROUND2: diagnostics cap", () => {
   it("diagnostics never exceed 500 even with many illegal transitions", () => {
@@ -166,7 +155,6 @@ describe("ROUND2: diagnostics cap", () => {
     expect(s.diagnostics.length).toBeLessThanOrEqual(500);
   });
 });
-
 // ---- PROBE F: ROUTE_CONTEXT_INVALIDATED is always legal ----
 describe("ROUND2: ROUTE_CONTEXT_INVALIDATED from any state", () => {
   it("is accepted from every workflow state", () => {
@@ -187,7 +175,7 @@ describe("ROUND2: ROUTE_CONTEXT_INVALIDATED from any state", () => {
       "COMPLETED",
       "CANCELLED",
       "ERROR",
-    ] as const;
+    ];
     for (const wf of states) {
       const s = reduceAppState(
         { ...initialState, workflow: wf },
@@ -198,5 +186,4 @@ describe("ROUND2: ROUTE_CONTEXT_INVALIDATED from any state", () => {
     }
   });
 });
-
 import { beforeEach } from "vitest";

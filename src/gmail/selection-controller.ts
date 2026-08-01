@@ -183,7 +183,8 @@ function readStatusText(): string {
     if (region.closest("#giso-extension-root")) continue;
     const label = region.getAttribute("aria-label") ?? "";
     const text = region.textContent || "";
-    parts.push(`${label} ${text}`.trim());
+    if (label) parts.push(label);
+    if (text) parts.push(text);
   }
   return parts.join(" ");
 }

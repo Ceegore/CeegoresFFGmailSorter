@@ -13,11 +13,8 @@ verarbeitet. Die Erweiterung verwendet dafür weder Gmail API noch Google OAuth
 oder interne Gmail-Netzwerkendpunkte.
 
 In Firefox `storage.local` werden ausschließlich technische Einstellungen wie
-Overlay-Position und Diagnosemodus gespeichert. Ein Neuladen des Gmail-Tabs
-beendet die Analysesitzung.
-
-Ein von dir ausdrücklich erzeugter Diagnoseexport wird lokal als Datei erstellt
-und automatisch redigiert. Prüfe ihn dennoch vor dem Teilen.
+die Overlay-Position gespeichert. Ein Neuladen des Gmail-Tabs beendet die
+Analysesitzung.
 
 Im Overlay steht klein „made by Ceegore“. Der Hinweis ist nicht verlinkt und
 überträgt keine Daten.

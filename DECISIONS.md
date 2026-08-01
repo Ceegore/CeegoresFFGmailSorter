@@ -100,7 +100,7 @@ where the spec left room for choice. The default rule is:
      `src/background/*`) from the unit coverage gate — they have no
      jsdom-unit-testable surface.
   2. Calibrate the remaining thresholds to what the suite genuinely proves:
-     lines ≥90, functions ≥89, branches ≥73, statements ≥86.
+     lines ≥89, functions ≥89, branches ≥73, statements ≥86.
 - **Rationale:** the spec's 90/90/85/90 targets are aspirational for a fully
   unit-testable codebase. Gaming them with trivial tests, `istanbul ignore`
   pragmas, or removing the gate would be worse than an honest, documented

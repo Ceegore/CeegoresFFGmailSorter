@@ -39,6 +39,19 @@ export function renderApp(shadow: ShadowRoot, state: AppState, controller: AppCo
   const body = overlay.querySelector<HTMLElement>("[data-testid='giso-body']");
   if (!body) return;
 
+  // BUG-004: preserve focus across re-renders. The filter input (and other
+  // focusable controls) loses focus when body.replaceChildren() rebuilds the
+  // DOM. Snapshot the focused element's data-testid + selection before the
+  // rebuild, then restore it to the equivalent element afterward.
+  const active = document.activeElement;
+  const activeTestid = active instanceof HTMLElement ? active.dataset["testid"] : undefined;
+  let selectionStart: number | null = null;
+  let selectionEnd: number | null = null;
+  if (active instanceof HTMLInputElement) {
+    selectionStart = active.selectionStart;
+    selectionEnd = active.selectionEnd;
+  }
+
   // View-specific content. The narrow-viewport warning is preserved across renders.
   const warning = body.querySelector("[data-testid='giso-narrow-warning']");
   body.replaceChildren();
@@ -46,6 +59,17 @@ export function renderApp(shadow: ShadowRoot, state: AppState, controller: AppCo
   for (const node of renderView(state, controller)) body.append(node);
   if (window.innerWidth < 720 && !body.querySelector("[data-testid='giso-narrow-warning']")) {
     body.prepend(buildNarrowWarning());
+  }
+
+  // Restore focus to the previously focused element by data-testid.
+  if (activeTestid) {
+    const el = body.querySelector<HTMLElement>(`[data-testid="${activeTestid}"]`);
+    if (el) {
+      el.focus();
+      if (el instanceof HTMLInputElement && selectionStart !== null && selectionEnd !== null) {
+        el.setSelectionRange(selectionStart, selectionEnd);
+      }
+    }
   }
 
   // Footer carries exactly one brand credit, reattached each render.
