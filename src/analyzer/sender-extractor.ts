@@ -78,6 +78,16 @@ function readAttributeSources(row: HTMLElement): SenderObservation[] {
  * subject/snippet/attachment text from masquerading as sender info.
  */
 function findSenderCell(row: HTMLElement): HTMLElement | null {
+  // ITI-016: check the row itself first. Attributes can live on the row
+  // element rather than on a descendant, so querySelector-only scanning would
+  // miss them and fall back to reading title/aria-label off the wrong element.
+  if (
+    row.hasAttribute("email") ||
+    row.hasAttribute("data-email") ||
+    row.hasAttribute("data-hovercard-id")
+  ) {
+    return row;
+  }
   return row.querySelector<HTMLElement>("[email], [data-email], [data-hovercard-id]") ?? null;
 }
 

@@ -155,9 +155,13 @@ export function reduceAppState(state: AppState, event: AppEvent): AppState {
     case "SHOW_OVERLAY":
       return { ...state, overlayVisible: true };
     case "SET_FILTER":
-      return { ...state, filter: event.value };
+      // ITI-043: return the same state reference when the value is unchanged
+      // so identical filter updates do not trigger a re-render.
+      return state.filter === event.value ? state : { ...state, filter: event.value };
     case "SET_SORT":
-      return { ...state, sort: event.value };
+      // ITI-043: return the same state reference when the value is unchanged
+      // so identical sort updates do not trigger a re-render.
+      return state.sort === event.value ? state : { ...state, sort: event.value };
     case "START_ANALYSIS":
       return ["IDLE", "RESULTS_READY", "ERROR"].includes(state.workflow)
         ? {

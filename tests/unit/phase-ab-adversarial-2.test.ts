@@ -30,8 +30,8 @@ describe("ADVERSARIAL 2: store acceptance edge cases", () => {
     const store = createStore(initialState, reduceAppState, acceptance);
     store.dispatch({ type: "SET_FILTER", value: "x" });
     const r = store.dispatch({ type: "SET_FILTER", value: "x" });
-    // The reducer always creates a new state object (...state), but the
-    // acceptance snapshot is unchanged, so accepted must be false.
+    // ITI-043: the reducer returns the same state reference for an unchanged
+    // filter, so stateChanged is false and accepted must be false.
     expect(r.accepted).toBe(false);
   });
 

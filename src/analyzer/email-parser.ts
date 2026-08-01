@@ -20,8 +20,8 @@ const DOMAIN =
 // ASCII suffix inside an invalid Unicode token (e.g. "üser@example.com" →
 // "ser@example.com") is NOT extracted. The boundary must be a non-token char
 // (start, whitespace, <, (, ", or comma) — not any letter/digit.
-const BOUNDARY_START = "(?:^|(?<=[\\s<(\"',]))";
-const BOUNDARY_END = "(?=[\\s>)\"',]|$)";
+const BOUNDARY_START = "(?:^|(?<=[\\s<(\"',;\\[]))";
+const BOUNDARY_END = "(?=[\\s>)\"',;\\]]|$)";
 const EMAIL_FIND_PATTERN = new RegExp(`${BOUNDARY_START}${LOCAL}@${DOMAIN}${BOUNDARY_END}`, "giu");
 const ASCII_FULL_PATTERN =
   /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$/iu;
@@ -93,5 +93,14 @@ export function parseEmailCandidate(value: string): Result<ParsedEmailCandidate,
       .replace(FORMAT_CHARS, "") // BUG-055: strip bidi/format chars
       .replace(/\s+/gu, " ")
       .trim();
-  return ok({ displayName: displayNameRaw || null, email: match.normalized.value });
+  // ITI-044: when the same address appears twice (e.g. "a@b.com <a@b.com>"),
+  // slicing around the first match leaves the second copy in the display name.
+  // Strip any remaining exact occurrences of the raw matched address, then
+  // collapse whitespace again.
+  const displayNameClean =
+    displayNameRaw
+      .replace(new RegExp(match.raw.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "giu"), "")
+      .replace(/\s+/gu, " ")
+      .trim() || null;
+  return ok({ displayName: displayNameClean, email: match.normalized.value });
 }

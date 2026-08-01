@@ -18,9 +18,10 @@ describe("createStore", () => {
     store.subscribe(listener);
     store.dispatch({ type: "TOGGLE_OVERLAY" }); // flips to visible
     listener.mockClear();
-    store.dispatch({ type: "SET_FILTER", value: "" }); // same empty filter -> illegal, but illegal changes diagnostics
-    // illegal transitions DO change state (append diagnostic), so subscriber fires.
-    expect(listener).toHaveBeenCalled();
+    // ITI-043: SET_FILTER with an unchanged value returns the same state
+    // reference, so the store treats it as a no-op and does NOT notify.
+    store.dispatch({ type: "SET_FILTER", value: "" }); // same empty filter -> no-op
+    expect(listener).not.toHaveBeenCalled();
   });
   it("isolates failing subscribers from others", () => {
     const store = createStore(initialState, reduceAppState);

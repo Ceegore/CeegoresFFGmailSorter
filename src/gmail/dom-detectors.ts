@@ -138,8 +138,13 @@ export function detectCurrentView(): Detection<GmailView> {
 
   // BUG-038: only exact inbox/category routes + active nav hint qualify.
   // A rejected route or a thread-open route (#inbox/xxx) is NOT inbox-like.
+  // ITI-018: category routes (#category/primary etc.) are accepted on the
+  // strength of the route itself — Gmail does not reliably mark the Inbox nav
+  // link as aria-current when a category tab is active, so requiring inboxHint
+  // would block legitimate category views. Only the exact #inbox route needs
+  // the active nav hint.
   const isInboxLike =
-    !isSearchActive && !rejectedRoute && (inboxRoute || categoryRoute) && inboxHint;
+    !isSearchActive && !rejectedRoute && ((inboxRoute && inboxHint) || categoryRoute);
   const viewClass = isSearchActive
     ? "search"
     : inboxRoute

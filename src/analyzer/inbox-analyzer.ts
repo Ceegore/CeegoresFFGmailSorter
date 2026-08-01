@@ -118,6 +118,15 @@ export async function analyzeCurrentInbox(signal: AbortSignal): Promise<Analysis
 
   for (let index = 0; index < rawRows.length; index += 1) {
     assertNotAborted(signal);
+    if (index % 50 === 0 && index > 0) {
+      // ITI-039: yield periodically so the row scan can be interrupted by
+      // abort and so long lists do not monopolize the main thread. Without a
+      // yield point the synchronous loop runs to completion regardless of the
+      // AbortSignal, and large inboxes can block UI updates.
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    }
     const row = rawRows[index];
     if (!row) continue;
     const fingerprint = fingerprintRow(row, index, analysisRunId);
