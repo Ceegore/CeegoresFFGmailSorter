@@ -52,13 +52,20 @@ function listFingerprintForStability(list: HTMLElement): string {
       // brittle to transient text changes) so anonymous rows still contribute
       // a distinguishing token.
       const email =
-        row.getAttribute("email") ??
-        row.querySelector("[email]")?.getAttribute("email") ??
+        row.getAttribute("email") ?? row.querySelector("[email]")?.getAttribute("email") ?? "";
+      const hover =
         row.getAttribute("data-hovercard-id") ??
+        row.querySelector("[data-hovercard-id]")?.getAttribute("data-hovercard-id") ??
         "";
-      ids.push(
-        `h:${String(email.length)}:${String(row.querySelectorAll("[email], [data-hovercard-id]").length)}`,
-      );
+      // HIGH-03: compute a real bounded hash from sender-relevant attribute
+      // VALUES (not just lengths). Two different senders with equal-length
+      // addresses now produce different fingerprints.
+      const hashInput = `${email}|${hover}`;
+      let hash = 0;
+      for (let i = 0; i < hashInput.length && i < 64; i++) {
+        hash = ((hash << 5) - hash + hashInput.charCodeAt(i)) | 0;
+      }
+      ids.push(`h${String(hash)}`);
     }
   }
   return `count=${String(rows.length)};ids=${ids.join(",")}`;
@@ -244,11 +251,15 @@ export async function analyzeCurrentInbox(signal: AbortSignal): Promise<Analysis
     }
   }
 
-  // MEDIUM-02: capture the list fingerprint immediately before collecting rows
-  // so we can detect a mid-scan DOM mutation (compare again after the scan
-  // loop). Without this, Gmail replacing/reordering rows while the scan loop
-  // runs would silently produce a partial or duplicated result.
+  // MEDIUM-02/HIGH-04/HIGH-05: capture the list fingerprint AND identity
+  // immediately before collecting rows so we can detect a mid-scan DOM mutation
+  // OR a whole-list replacement. After scanning, we verify not only that the
+  // fingerprint is unchanged but also that the same list element is still the
+  // primary list AND still connected. Gmail can detach the scanned list and
+  // insert a new one while the analyzer yields — the old detached subtree's
+  // fingerprint would remain unchanged, bypassing a pure fingerprint check.
   const preScanFingerprint = listFingerprintForStability(list);
+  const scanList = list;
   const rawRows = collectMessageRows(list);
   if (rawRows.length === 0) {
     throwAppError(appError("GISO-ROWS-001", "noRows", "no message rows", true));
@@ -283,10 +294,24 @@ export async function analyzeCurrentInbox(signal: AbortSignal): Promise<Analysis
     entries.push({ fingerprint: fingerprint.value, sender, rowIndex: index });
   }
 
-  // MEDIUM-02: if the list mutated during the scan loop, the snapshot is no
-  // longer a faithful representation of the inbox — fail safe rather than
-  // return a possibly partial/reordered/duplicated result.
-  if (listFingerprintForStability(list) !== preScanFingerprint) {
+  // MEDIUM-02/HIGH-04/HIGH-05: after the scan loop, verify THREE things:
+  // 1. The scanned list element is still the current primary list (identity).
+  // 2. It is still connected (not detached by a Gmail re-render).
+  // 3. Its fingerprint has not changed (no row mutation during scan).
+  // A pure fingerprint check misses the case where Gmail detaches the old
+  // list (fingerprint frozen) and inserts a new primary list — the analyzer
+  // would silently return results from a stale detached subtree.
+  if (!scanList.isConnected || findMessageListElement() !== scanList) {
+    throwAppError(
+      appError(
+        "GISO-DOM-CHANGED-001",
+        "gmailNotReady",
+        "message list replaced during analysis scan",
+        true,
+      ),
+    );
+  }
+  if (listFingerprintForStability(scanList) !== preScanFingerprint) {
     throwAppError(
       appError("GISO-DOM-CHANGED-001", "gmailNotReady", "DOM changed during analysis scan", true),
     );

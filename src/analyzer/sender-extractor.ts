@@ -43,23 +43,21 @@ function isInsideRecipientWidget(el: HTMLElement): boolean {
     "[data-recipient], .recipient, .contact-widget, .contact-chip",
   );
   if (structural) return true;
-  // Check aria-label with normalized token matching that handles punctuation.
-  // CUR-022/HIGH-05: the previous `[aria-label~="To" i]` selector used CSS
-  // whitespace-token word matching, which requires the attribute value to
-  // contain "To" as an EXACT whitespace-separated token. Gmail renders real
-  // recipient labels as a single token with the colon attached ("To:",
-  // "Cc:", "Bcc:", "Empfänger:"), so `~=` never matched them — recipient
-  // spans were then NOT excluded from the sender scan. A JS regex with word
-  // boundary + optional colon/angle matches both "To" and "To:" while still
-  // excluding unrelated labels like "Today" or "Toolbar".
-  const labeled = el.closest<HTMLElement>("[aria-label]");
-  if (labeled) {
-    const label = labeled.getAttribute("aria-label") ?? "";
-    // Match common recipient labels: "To", "To:", "Cc", "Cc:", "Bcc:",
-    // "Empfänger", "Empfänger:", "recipient", "recipients"
-    if (/\b(?:To|Cc|Bcc|Empf[aä]nger|Recipient)s?\s*[:>]/iu.test(label)) {
-      return true;
+  // HIGH-06: walk ALL labeled ancestors up to the message row, not just the
+  // nearest one. A contact chip with its own aria-label="Carol" nested inside
+  // an outer aria-label="To: carol@example.com" container would have its
+  // nearest label be "Carol" — the outer "To:" container was never examined.
+  let parent: HTMLElement | null = el.parentElement;
+  while (parent && parent !== el.ownerDocument.body) {
+    const label = parent.getAttribute("aria-label");
+    if (label) {
+      // Match common recipient labels with optional punctuation: "To:", "Cc:",
+      // "Bcc:", "Empfänger:", "recipients". Word boundary + optional colon.
+      if (/\b(?:To|Cc|Bcc|Empf[aä]nger|Recipient)s?\s*[:>]/iu.test(label)) {
+        return true;
+      }
     }
+    parent = parent.parentElement;
   }
   return false;
 }

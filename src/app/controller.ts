@@ -195,18 +195,22 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
         } finally {
           expectedRouteTransition = false;
           expectedPreSearchRoute = null;
-          // CUR-009: the grace window only needs to cover the route observer's
-          // debounced callback firing AFTER the search resolves. That debounce is
-          // at most 150ms (normal) or 500ms (burst), and hashchange/pushState/
-          // popstate fire immediately. A 500ms grace is therefore sufficient and
-          // keeps the previous 3s window from masking a same-account navigation
-          // AWAY from the search results (e.g. the user clicking a label) for the
-          // first 2.5s.
-          expectedRouteGraceUntil = performance.now() + 500;
         }
-        // MEDIUM-04: capture the search-results route so the grace window only
-        // accepts this exact route (not every same-account route).
+        // MEDIUM-02: only arm the post-search grace window after a SUCCESSFUL
+        // search. The grace assignment used to live in the finally block, so it
+        // was armed even when submitAndWaitUntilReady threw — letting a failed
+        // search mask a same-account route change for 500ms. The exact
+        // search-results route is only meaningful here, after readiness, so the
+        // grace and the captured route are set together on the success path.
+        // CUR-009: the grace window only needs to cover the route observer's
+        // debounced callback firing AFTER the search resolves. That debounce is
+        // at most 150ms (normal) or 500ms (burst), and hashchange/pushState/
+        // popstate fire immediately. A 500ms grace is therefore sufficient and
+        // keeps the previous 3s window from masking a same-account navigation
+        // AWAY from the search results (e.g. the user clicking a label) for the
+        // first 2.5s.
         expectedPostSearchRoute = `${location.pathname}${location.search}#${location.hash}`;
+        expectedRouteGraceUntil = performance.now() + 500;
         // Empty results end the workflow for this group with an error.
         if (evidence.emptyStateDetected && !evidence.mailListDetected) {
           dispatch({

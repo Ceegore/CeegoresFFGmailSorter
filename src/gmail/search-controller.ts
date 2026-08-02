@@ -126,21 +126,32 @@ function routeFingerprint(): string {
 function listFingerprint(): string {
   // CUR-004: scope the row count to the primary mail list so unrelated global
   // rows (nav/chat/settings) don't pollute the fingerprint.
-  // CUR-015/CUR-008: include the per-row thread ids so a same-length DOM swap
-  // (Gmail virtualization replacing one thread with another) is detected and
-  // counts as a fingerprint change. A bare count could miss a search that
-  // happens to return the same number of rows as the inbox baseline.
+  // CUR-015/CUR-008/HIGH-03: include the per-row thread ids so a same-length
+  // DOM swap is detected. For rows WITHOUT stable IDs, compute a bounded hash
+  // from sender-relevant attribute VALUES (not just lengths) so different
+  // senders with equal-length addresses produce different fingerprints.
   const list = findMessageListElement();
   if (!list) return "none";
-  const rows = list.querySelectorAll('[role="listitem"], tr[role="row"]');
+  const rows = list.querySelectorAll<HTMLElement>('[role="listitem"], tr[role="row"]');
   const ids: string[] = [];
   for (const row of rows) {
     const id =
       row.getAttribute("data-thread-id") ??
       row.getAttribute("data-legacy-thread-id") ??
-      row.getAttribute("id") ??
-      "?";
-    ids.push(id);
+      row.getAttribute("id");
+    if (id) {
+      ids.push(id);
+    } else {
+      const email =
+        row.getAttribute("email") ?? row.querySelector("[email]")?.getAttribute("email") ?? "";
+      const hover = row.getAttribute("data-hovercard-id") ?? "";
+      const hashInput = `${email}|${hover}`;
+      let hash = 0;
+      for (let i = 0; i < hashInput.length && i < 64; i++) {
+        hash = ((hash << 5) - hash + hashInput.charCodeAt(i)) | 0;
+      }
+      ids.push(`h${String(hash)}`);
+    }
   }
   return `count=${String(rows.length)};ids=${ids.join(",")}`;
 }
@@ -313,13 +324,33 @@ export async function submitAndWaitUntilReady(
   for (const method of submitMethods) {
     assertNotAborted(signal);
     method();
-    // HIGH-02/HIGH-04: wait up to 3 seconds (clamped to the remaining total)
-    // for ANY sign the search started.
-    const startedDeadline = Math.min(performance.now() + 3_000, totalDeadline);
+    // HIGH-02/MEDIUM-01: check immediately — the method may have synchronously
+    // changed the route, the list, or surfaced a loading indicator. Recognizing
+    // a synchronous start avoids an unnecessary probe loop and a wasted method
+    // fallback (which would re-submit a search that already started). The
+    // loading check also catches searches that show a loading indicator before
+    // touching the route/list.
+    if (routeFingerprint() !== baselineRoute || listFingerprint() !== baselineList || isLoading()) {
+      started = true;
+      break;
+    }
+    // HIGH-02/HIGH-04: wait up to 2 seconds per method (clamped to remaining
+    // total) for ANY sign the search started. Using 2s (not 3s) ensures that
+    // with a typical 12s timeout there's still time for the next method's
+    // probe + the final readiness wait. If the total deadline has already
+    // passed, the loop is skipped entirely and we fall through to the next
+    // method's immediate check.
+    const startedDeadline = Math.min(performance.now() + 2_000, totalDeadline);
     while (performance.now() < startedDeadline) {
       assertNotAborted(signal);
       await delay(100, signal);
-      if (routeFingerprint() !== baselineRoute || listFingerprint() !== baselineList) {
+      // MEDIUM-01: isLoading() is a third start signal — a search may show a
+      // loading indicator before the route/list fingerprint changes.
+      if (
+        routeFingerprint() !== baselineRoute ||
+        listFingerprint() !== baselineList ||
+        isLoading()
+      ) {
         started = true;
         break;
       }
@@ -346,9 +377,25 @@ export async function submitAndWaitUntilReady(
   // waitForEvidence throws GISO-SEARCH-TIMEOUT-001. There is no separate "last
   // resort" re-submit — that would re-submit a possibly-already-running search.
   // HIGH-04: always bounded by the total deadline so the whole call stays
-  // within timeoutMs (the floor of 1s lets a borderline-slow navigation still
-  // register evidence rather than failing instantly on a near-zero remainder).
-  const remainingForEvidence = Math.max(1000, totalDeadline - performance.now());
+  // within timeoutMs.
+  //
+  // HIGH-01: the previous code floored the remainder at Math.max(1000, ...),
+  // which granted an extra second even after the deadline had fully passed and
+  // nothing had started. Now the two cases are distinguished:
+  //  - If NO method started (started === false) and there is insufficient time
+  //    for a stability window, fail fast with GISO-SEARCH-TIMEOUT-001 instead
+  //    of granting free time past the deadline.
+  //  - If a method DID start (started === true) but the per-method probe
+  //    consumed most of the budget (e.g. a no-op earlier method ate the
+  //    per-method probe before a later synchronous method navigated), the
+  //    stability window still needs room to register. Floor the remainder at
+  //    stabilityMs so the just-started search can complete its stability check
+  //    without immediately timing out.
+  const now = performance.now();
+  if (!started && totalDeadline - now < stabilityMs) {
+    throwAppError(appError("GISO-SEARCH-TIMEOUT-001", "searchFailed", "search timed out", true));
+  }
+  const remainingForEvidence = Math.max(totalDeadline - now, stabilityMs);
   return await waitForEvidence(
     query,
     baselineRoute,

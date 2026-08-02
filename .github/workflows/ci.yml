@@ -31,13 +31,13 @@ jobs:
           fi
       - run: npm ci
       - run: npx playwright install --with-deps firefox
-      # BUG-060: spec hash is the first gate — before any build or test.
-      - run: npm run verify:spec-hash
+      # MEDIUM-06: CI runs one full verify, then package-artifacts only.
+      # Previously `npm run package` expanded to `release:check` which
+      # re-ran npm ci + playwright install + verify — duplicating ~15 minutes
+      # of work. The CI already installed deps and browsers, so call the
+      # artifact builder directly after a single verify pass.
       - run: npm run verify
-      # ITI-064: run the packaging step in CI so a broken release pipeline is
-      # caught before tagging. package.mjs rebuilds dist and web-ext builds the
-      # xpi, so this also exercises the full artifact path.
-      - run: npm run package
+      - run: npm run package-artifacts
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4.6.2
