@@ -63,6 +63,13 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
   // route. Even during the post-search grace window, a switch to a different
   // account is never an expected transition and must invalidate immediately.
   let expectedAccountSlot: number | null = null;
+  // CUR-019: the route captured immediately before the search. While the search
+  // is in flight (expectedRouteTransition) Gmail WILL change its route to the
+  // search results — that transition is expected. But a same-account route
+  // change to anything OTHER than the pre-search route or a #search route means
+  // the user navigated away (a label, a thread, settings) mid-flow, which must
+  // invalidate immediately rather than be masked by the in-flight flag.
+  let expectedPreSearchRoute: string | null = null;
 
   const dispatch = (event: AppEvent): { accepted: boolean } => {
     return store.dispatch(event);
@@ -172,12 +179,17 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
         // CUR-009: remember the account slot so a user-initiated account
         // switch can be detected even during the grace window.
         expectedAccountSlot = detectAccountSlot();
+        // CUR-019: capture the exact route before the search so that, during the
+        // in-flight window, only a transition TO a search route is treated as
+        // expected. Any other same-account route change invalidates immediately.
+        expectedPreSearchRoute = `${location.pathname}${location.search}#${location.hash}`;
         expectedRouteTransition = true;
         let evidence: Awaited<ReturnType<typeof submitAndWaitUntilReady>>;
         try {
           evidence = await submitAndWaitUntilReady(query, signal);
         } finally {
           expectedRouteTransition = false;
+          expectedPreSearchRoute = null;
           // CUR-009: the grace window only needs to cover the route observer's
           // debounced callback firing AFTER the search resolves. That debounce is
           // at most 150ms (normal) or 500ms (burst), and hashchange/pushState/
@@ -313,8 +325,19 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
         const currentSlot = detectAccountSlot();
         if (currentSlot !== expectedAccountSlot) {
           // Account changed during grace — fall through to hard invalidation.
+        } else if (expectedRouteTransition && expectedPreSearchRoute !== null) {
+          // CUR-019: same account, in-flight search. The search itself is
+          // expected to transition the route TO a #search route. Any other
+          // route change (to a label, a thread, settings, etc.) is an
+          // unrelated user navigation and must invalidate immediately instead
+          // of being masked by the in-flight flag.
+          const currentRoute = `${location.pathname}${location.search}#${location.hash}`;
+          if (currentRoute === expectedPreSearchRoute) return; // hasn't changed yet
+          if (/#search\b/iu.test(location.hash)) return; // navigated TO search — expected
+          // Any other route change during the in-flight search is unexpected —
+          // fall through to hard invalidation.
         } else {
-          return; // same account, allow the grace
+          return; // same account, grace window — allow it
         }
       }
       abortController?.abort();

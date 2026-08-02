@@ -45,6 +45,42 @@ function listFingerprintForStability(list: HTMLElement): string {
   return `count=${String(rows.length)};ids=${ids.join(",")}`;
 }
 
+/**
+ * CUR-016/CUR-017: reusable, bounded DOM-stability wait. Polls the list's
+ * lightweight child fingerprint and only returns success once the fingerprint
+ * has remained unchanged for a continuous `stabilityMs` window. The wait is
+ * always bounded by `deadlineMs` so a churn-heavy DOM cannot hang analysis. This
+ * is used both for the initial pre-scan stability window and for the detached /
+ * replacement-list re-stabilization, which previously had NO deadline and only
+ * required 100ms (not the 250ms the spec mandates).
+ *
+ * Returns true if the list was stable for the full window, false if the deadline
+ * expired first. Callers decide whether false is a hard failure or recoverable.
+ */
+async function waitForListStability(
+  list: HTMLElement,
+  signal: AbortSignal,
+  stabilityMs: number,
+  deadlineMs: number,
+): Promise<boolean> {
+  const deadline = performance.now() + deadlineMs;
+  let lastFingerprint = listFingerprintForStability(list);
+  let stableSince = performance.now();
+  while (performance.now() - stableSince < stabilityMs && performance.now() < deadline) {
+    assertNotAborted(signal);
+    // C-2: use the shared delay(), whose abort listener is removed on both the
+    // timeout and abort paths. The previous hand-rolled Promise leaked its
+    // listener on the normal (timeout) path for the signal's lifetime.
+    await delay(50, signal);
+    const currentFingerprint = listFingerprintForStability(list);
+    if (currentFingerprint !== lastFingerprint) {
+      lastFingerprint = currentFingerprint;
+      stableSince = performance.now();
+    }
+  }
+  return performance.now() - stableSince >= stabilityMs;
+}
+
 // Async to match the controller's effect contract and to allow the stability
 // window (and future budgeted hovercard resolution, spec §14.3) to await.
 export async function analyzeCurrentInbox(signal: AbortSignal): Promise<AnalysisResult> {
@@ -99,62 +135,43 @@ export async function analyzeCurrentInbox(signal: AbortSignal): Promise<Analysis
   // ITI-013: wait for a 250ms DOM stability window before scanning. The spec
   // requires the list to be stable before we snapshot rows, otherwise transient
   // Gmail rendering (lazy rows, virtualized reflow) can produce a partial or
-  // reordered result. We poll a lightweight child-count fingerprint and reset
-  // the window whenever it changes.
-  // CUR-016: bound the wait with a 10-second deadline so a churn-heavy DOM
-  // cannot hang analysis forever. Unlike the previous "proceed anyway" behavior
-  // (which scanned an unstable snapshot and could silently produce a partial /
-  // reordered result), we now fail safe: if the deadline expired WITHOUT the
-  // DOM having been stable, throw a recoverable gmailNotReady error so the user
-  // is never handed an analysis built on a still-mutating list. The caller can
-  // retry; the user also has a Cancel button on the analyzing view.
+  // reordered result. CUR-016: bound the wait with a 10-second deadline so a
+  // churn-heavy DOM cannot hang analysis forever. Unlike the previous "proceed
+  // anyway" behavior (which scanned an unstable snapshot and could silently
+  // produce a partial / reordered result), we now fail safe: if the deadline
+  // expired WITHOUT the DOM having been stable, throw a recoverable gmailNotReady
+  // error so the user is never handed an analysis built on a still-mutating list.
+  // The caller can retry; the user also has a Cancel button on the analyzing view.
   const listForStability = list;
-  const deadline = performance.now() + 10_000;
-  let lastFingerprint = listFingerprintForStability(listForStability);
-  let stableSince = performance.now();
-  while (performance.now() - stableSince < 250 && performance.now() < deadline) {
-    assertNotAborted(signal);
-    // C-2: use the shared delay(), whose abort listener is removed on both the
-    // timeout and abort paths. The previous hand-rolled Promise leaked its
-    // listener on the normal (timeout) path for the signal's lifetime.
-    await delay(50, signal);
-    const currentFingerprint = listFingerprintForStability(listForStability);
-    if (currentFingerprint !== lastFingerprint) {
-      lastFingerprint = currentFingerprint;
-      stableSince = performance.now();
-    }
-  }
-  const achievedStability = performance.now() - stableSince >= 250;
+  const achievedStability = await waitForListStability(listForStability, signal, 250, 10_000);
   assertNotAborted(signal);
 
-  // CUR-016: if the 10s deadline expired without the DOM ever settling for a
-  // continuous 250ms window, fail safe rather than snapshotting a churned
-  // (likely partial / reordered) list. Re-verify stability one final time:
-  // even past the deadline, if the list is genuinely still now we can proceed;
-  // only throw when it is still actively mutating.
-  if (performance.now() >= deadline && !achievedStability) {
-    const finalCheck = listFingerprintForStability(listForStability);
-    await delay(50, signal);
-    assertNotAborted(signal);
-    if (listFingerprintForStability(listForStability) !== finalCheck) {
-      throwAppError(
-        appError(
-          "GISO-DOM-CHANGED-001",
-          "gmailNotReady",
-          "DOM did not stabilize within deadline",
-          true,
-        ),
-      );
-    }
+  // CUR-016: fail safe. If the 10s deadline expired and the DOM never achieved
+  // a continuous 250ms stability window, throw a recoverable error. Do NOT
+  // attempt a weak re-verification (the previous code only took a single 50ms
+  // sample and proceeded if it matched — but 50ms != the required 250ms, so it
+  // could snapshot a list that was merely momentarily still between mutations).
+  // Proceeding with an unstable snapshot produces silently wrong results.
+  if (!achievedStability) {
+    throwAppError(
+      appError(
+        "GISO-DOM-CHANGED-001",
+        "gmailNotReady",
+        "DOM did not stabilize within deadline",
+        true,
+      ),
+    );
   }
 
   // CUR-017: Gmail may have replaced the list node during the stability window.
   // If the captured node is now detached, re-resolve to the current list and
   // scan that instead of a stale detached subtree. The previous code scanned the
   // fresh node immediately, but a freshly-attached list can still be streaming
-  // rows in (the very reason the original node was replaced). Run one short
-  // (100ms) stability wait on the new node so the snapshot reflects its final
-  // state, not a transient partial render.
+  // rows in (the very reason the original node was replaced). Run a bounded
+  // 250ms stability wait (5s deadline) on the new node — matching the initial
+  // window's stability bar — so the snapshot reflects its final state, not a
+  // transient partial render. CUR-016: if the replacement list also fails to
+  // stabilize within its deadline, fail safe rather than snapshotting it.
   if (!list.isConnected) {
     const freshList = findMessageListElement();
     if (!freshList) {
@@ -164,16 +181,16 @@ export async function analyzeCurrentInbox(signal: AbortSignal): Promise<Analysis
     }
     list = freshList;
     // CUR-017: re-stabilize on the fresh node before scanning.
-    let fp = listFingerprintForStability(list);
-    let stable = performance.now();
-    while (performance.now() - stable < 100) {
-      assertNotAborted(signal);
-      await delay(50, signal);
-      const current = listFingerprintForStability(list);
-      if (current !== fp) {
-        fp = current;
-        stable = performance.now();
-      }
+    const replacementStable = await waitForListStability(list, signal, 250, 5_000);
+    if (!replacementStable) {
+      throwAppError(
+        appError(
+          "GISO-DOM-CHANGED-001",
+          "gmailNotReady",
+          "replacement message list did not stabilize within deadline",
+          true,
+        ),
+      );
     }
   }
 

@@ -18,19 +18,26 @@ if (status.trim()) {
   );
 }
 
-// REL-002: run verification gates (minus e2e and audit, which need extra setup)
-// before building so package never emits an unverified release. The earlier
-// version only ran format/lint/typecheck/test, leaving the manifest contract,
-// the no-network guarantee, the dist self-check, and the web-ext lint unrun —
-// any of which could ship a non-conformant or AMO-rejected build. The
-// source-only gate (verify:no-network) runs here; the dist-dependent gates
+// REL-002: run verification gates before building so package never emits an
+// unverified release. The earlier version only ran format/lint/typecheck/test,
+// leaving the spec-hash contract, code coverage, the no-network guarantee, the
+// dist self-check, the security audit, and the web-ext lint unrun — any of
+// which could ship a non-conformant or AMO-rejected build.
+// CUR-023: add verify:spec-hash (locked product-spec SHA-256), test:coverage
+// (enforces the coverage threshold), and verify:security (npm audit). E2E
+// (test:e2e) is intentionally omitted here because it needs the Playwright
+// browser binaries, which CI installs separately; CI runs the full `verify`
+// (including e2e) via `release:check`.
+// The source-only gate (verify:no-network) runs here; the dist-dependent gates
 // (verify:manifest, verify:dist, webext:lint) run after the fresh build below
 // so they verify the exact bytes being shipped.
 console.log("Running verification gates...");
+await exec("npm", ["run", "verify:spec-hash"], { shell: true });
 await exec("npm", ["run", "format:check"], { shell: true });
 await exec("npm", ["run", "lint"], { shell: true });
 await exec("npm", ["run", "typecheck"], { shell: true });
 await exec("npm", ["run", "test"], { shell: true });
+await exec("npm", ["run", "test:coverage"], { shell: true });
 await exec("npm", ["run", "verify:no-network"], { shell: true });
 
 // ITI-063: rebuild dist from source before packaging so a stale/older dist can
@@ -48,6 +55,8 @@ console.log("Verifying fresh dist...");
 await exec("npm", ["run", "verify:manifest"], { shell: true });
 await exec("npm", ["run", "verify:dist"], { shell: true });
 await exec("npm", ["run", "webext:lint"], { shell: true });
+// CUR-023: npm audit enforces no high/critical advisories in production deps.
+await exec("npm", ["run", "verify:security"], { shell: true });
 
 await rm(releaseDir, { recursive: true, force: true });
 await mkdir(releaseDir, { recursive: true });

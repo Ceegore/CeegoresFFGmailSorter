@@ -8,7 +8,7 @@ import { delay } from "@/shared/time";
 import { gmailTextPatterns, matchesAny } from "@/gmail/gmail-text-patterns";
 import { detectAccountSlot, findMessageListElement } from "@/gmail/dom-detectors";
 import { isInteractable } from "@/shared/dom";
-import { appError, throwAppError } from "@/shared/errors";
+import { appError, GisoError, throwAppError } from "@/shared/errors";
 
 export function buildInboxSenderQuery(email: string): string {
   const normalized = normalizeEmail(email);
@@ -116,32 +116,6 @@ function readSearchBoxValue(): string {
   return box ? box.value : "";
 }
 
-/**
- * ITI-009: Reusable submission strategy (§53.4). Order: button click, then
- * form.requestSubmit, then Enter key. The retry path used to only re-click a
- * button when one existed, so when the first attempt fell through to
- * form.requestSubmit or Enter, the retry did nothing. Extracting this lets the
- * retry repeat the exact same strategy.
- */
-function submitSearch(box: HTMLInputElement): void {
-  const button = findSearchSubmitButton();
-  if (button) {
-    button.click();
-    return;
-  }
-  const form = box.form;
-  if (form) {
-    form.requestSubmit();
-    return;
-  }
-  box.dispatchEvent(
-    new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true }),
-  );
-  box.dispatchEvent(
-    new KeyboardEvent("keyup", { key: "Enter", code: "Enter", bubbles: true, cancelable: true }),
-  );
-}
-
 function routeFingerprint(): string {
   // CUR-007: include location.search — Gmail search results can change the
   // query string (e.g. ?q=...) without altering the hash, so omitting it
@@ -236,6 +210,18 @@ function isLoading(): boolean {
 /**
  * Submit the query and wait until the ready-evidence model (§53.5) is satisfied.
  * Throws a GisoError (GISO-SEARCH-* / GISO-SEARCH-RELATED-ONLY-001) on failure.
+ *
+ * CUR-002: evidence-driven fallback chain. The previous implementation called a
+ * single submitSearch() helper that picked ONE method (button > form > Enter)
+ * and returned immediately, then waited for evidence in a separate step. If the
+ * chosen method was a no-op (e.g. the "button" was Gmail's search-options toggle
+ * rather than the real submit), the form/Enter fallbacks were never tried and
+ * the whole call deadlocked until timeout. Instead, this function now drives the
+ * fallback itself: it tries each submission method and, after each, runs a short
+ * 2-second evidence probe to see whether the search actually started (route/list
+ * fingerprint changed). Only when a method produces no evidence within 2s does
+ * it move on to the next. Hard failures (abort, related-only, sustained query
+ * mismatch) propagate immediately and are never retried via another method.
  */
 export async function submitAndWaitUntilReady(
   query: string,
@@ -258,50 +244,78 @@ export async function submitAndWaitUntilReady(
   box.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   setNativeInputValue(box, query);
 
-  // Submission order (§53.4): button, then form.requestSubmit, then Enter.
-  // Enter is restored as a tertiary fallback — Gmail's search box responds to
-  // Enter reliably. BUG-070's concern was about Enter as the ONLY method; here
-  // it is the last resort after button and form are tried. ITI-009: the
-  // strategy is factored into submitSearch so the timeout retry repeats it.
-  submitSearch(box);
-
-  try {
-    return await waitForEvidence(
-      query,
-      baselineRoute,
-      baselineList,
-      accountSlot,
-      signal,
-      timeoutMs,
-      stabilityMs,
+  // CUR-002: build the ordered list of submission methods (§53.4). Button first,
+  // then form.requestSubmit, then Enter key. Each is tried in turn below with a
+  // short evidence probe between them so a no-op method no longer deadlocks the
+  // whole call.
+  const submitMethods: (() => void)[] = [];
+  const button = findSearchSubmitButton();
+  if (button)
+    submitMethods.push(() => {
+      button.click();
+    });
+  if (box.form) {
+    const form = box.form;
+    submitMethods.push(() => {
+      form.requestSubmit();
+    });
+  }
+  submitMethods.push(() => {
+    box.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        bubbles: true,
+        cancelable: true,
+      }),
     );
-  } catch (error) {
-    // BUG-036: an abort (user cancel / route change) must NEVER trigger a
-    // retry click. Only a genuine timeout may retry, and only after re-checking
-    // that the signal is still alive.
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw error;
-    }
-    if (!isTimeout(error)) {
-      throw error;
-    }
+    box.dispatchEvent(
+      new KeyboardEvent("keyup", { key: "Enter", code: "Enter", bubbles: true, cancelable: true }),
+    );
+  });
+
+  // CUR-002: try each method with a short 2-second evidence probe. The outer
+  // safeRun already provides one controlled retry on recoverable errors, so this
+  // loop does NOT re-implement a timeout retry — it only walks the fallback
+  // chain once, and a hard failure (abort / related-only / mismatch) short-
+  // circuits the whole attempt.
+  let lastError: unknown;
+  for (const method of submitMethods) {
     assertNotAborted(signal);
-    // One controlled timeout-retry per §15.2. ITI-009: re-resolve the search
-    // box and repeat the full submission strategy (button / form / Enter) — the
-    // previous retry only clicked a button, which did nothing when the first
-    // attempt fell through to Enter.
-    const retryBox = findSearchBox();
-    if (!retryBox) {
-      throwAppError(
-        appError("GISO-SEARCH-BOX-001", "searchFailed", "search box not found on retry", true),
+    method();
+    try {
+      // Short probe: did the search start within 2 seconds?
+      return await waitForEvidence(
+        query,
+        baselineRoute,
+        baselineList,
+        accountSlot,
+        signal,
+        2_000,
+        stabilityMs,
       );
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") throw error;
+      // Related-only and a sustained query mismatch are hard failures — retrying
+      // via another submission method cannot change Gmail's result set, so do not
+      // walk the chain further.
+      if (error instanceof GisoError && error.app.code === "GISO-SEARCH-RELATED-ONLY-001") {
+        throw error;
+      }
+      if (error instanceof GisoError && error.app.code === "GISO-SEARCH-MISMATCH-001") {
+        throw error;
+      }
+      lastError = error;
+      // A timeout (search did not start) — fall through to the next method.
     }
-    // H-3: re-set the query value before retrying submission. The retry path
-    // used to only re-resolve the box and repeat the submission strategy, so if
-    // anything had cleared or altered the input since the first attempt, the
-    // retry submitted an empty/stale query.
-    setNativeInputValue(retryBox, query);
-    submitSearch(retryBox);
+  }
+
+  // All methods exhausted within their 2s probes. As a last resort, retry the
+  // final method once with the full configured timeout — some searches only
+  // surface evidence after a slow network round trip that exceeds the 2s probe.
+  const lastMethod = submitMethods[submitMethods.length - 1];
+  if (lastMethod) {
+    lastMethod();
     return await waitForEvidence(
       query,
       baselineRoute,
@@ -312,10 +326,11 @@ export async function submitAndWaitUntilReady(
       stabilityMs,
     );
   }
-}
-
-function isTimeout(error: unknown): boolean {
-  return error instanceof Error && error.message.includes("timed out");
+  // No submission methods were available (no button, no form, no key dispatch).
+  void lastError;
+  throwAppError(
+    appError("GISO-SEARCH-SUBMIT-001", "searchFailed", "all submission methods failed", true),
+  );
 }
 
 async function waitForEvidence(

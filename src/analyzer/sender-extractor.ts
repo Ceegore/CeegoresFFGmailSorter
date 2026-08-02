@@ -38,8 +38,19 @@ const HIGH_SOURCES: ReadonlySet<SenderIdentity["source"]> = new Set([
  * excluded from the sender scan.
  */
 function isInsideRecipientWidget(el: HTMLElement): boolean {
+  // CUR-022: use the `~=` (whitespace-token word-match) selector instead of
+  // `*=` / bare substring matching. `[aria-label*="To" i]` matched any label
+  // CONTAINING the substring "To", so widgets labelled "Today", "Toolbar",
+  // "Tooltip", etc. were treated as recipient regions and their email-bearing
+  // children were wrongly excluded from the sender scan. `~=` requires the
+  // attribute value to contain "To" as an EXACT whitespace-separated token, so
+  // "Today" (one token, no "To" word) no longer matches while a real recipient
+  // label like "To: alice@example.com" still does.
   return el.closest<HTMLElement>(
-    '[role="listitem"][data-recipient], [aria-label*="Empfänger" i], [aria-label*="recipient" i], [aria-label*="To" i], [aria-label*="Cc" i], [aria-label*="Bcc" i], .recipient, .contact-widget',
+    '[role="listitem"][data-recipient], ' +
+      '[aria-label~="Empfänger" i], [aria-label~="recipient" i], ' +
+      '[aria-label~="To" i], [aria-label~="Cc" i], [aria-label~="Bcc" i], ' +
+      ".recipient, .contact-widget",
   )
     ? true
     : false;
