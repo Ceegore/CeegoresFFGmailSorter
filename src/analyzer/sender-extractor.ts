@@ -38,22 +38,30 @@ const HIGH_SOURCES: ReadonlySet<SenderIdentity["source"]> = new Set([
  * excluded from the sender scan.
  */
 function isInsideRecipientWidget(el: HTMLElement): boolean {
-  // CUR-022: use the `~=` (whitespace-token word-match) selector instead of
-  // `*=` / bare substring matching. `[aria-label*="To" i]` matched any label
-  // CONTAINING the substring "To", so widgets labelled "Today", "Toolbar",
-  // "Tooltip", etc. were treated as recipient regions and their email-bearing
-  // children were wrongly excluded from the sender scan. `~=` requires the
-  // attribute value to contain "To" as an EXACT whitespace-separated token, so
-  // "Today" (one token, no "To" word) no longer matches while a real recipient
-  // label like "To: alice@example.com" still does.
-  return el.closest<HTMLElement>(
-    '[role="listitem"][data-recipient], ' +
-      '[aria-label~="Empfänger" i], [aria-label~="recipient" i], ' +
-      '[aria-label~="To" i], [aria-label~="Cc" i], [aria-label~="Bcc" i], ' +
-      ".recipient, .contact-widget",
-  )
-    ? true
-    : false;
+  // Check structural markers first
+  const structural = el.closest<HTMLElement>(
+    "[data-recipient], .recipient, .contact-widget, .contact-chip",
+  );
+  if (structural) return true;
+  // Check aria-label with normalized token matching that handles punctuation.
+  // CUR-022/HIGH-05: the previous `[aria-label~="To" i]` selector used CSS
+  // whitespace-token word matching, which requires the attribute value to
+  // contain "To" as an EXACT whitespace-separated token. Gmail renders real
+  // recipient labels as a single token with the colon attached ("To:",
+  // "Cc:", "Bcc:", "Empfänger:"), so `~=` never matched them — recipient
+  // spans were then NOT excluded from the sender scan. A JS regex with word
+  // boundary + optional colon/angle matches both "To" and "To:" while still
+  // excluding unrelated labels like "Today" or "Toolbar".
+  const labeled = el.closest<HTMLElement>("[aria-label]");
+  if (labeled) {
+    const label = labeled.getAttribute("aria-label") ?? "";
+    // Match common recipient labels: "To", "To:", "Cc", "Cc:", "Bcc:",
+    // "Empfänger", "Empfänger:", "recipient", "recipients"
+    if (/\b(?:To|Cc|Bcc|Empf[aä]nger|Recipient)s?\s*[:>]/iu.test(label)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function readAttributeSources(row: HTMLElement): SenderObservation[] {
@@ -122,14 +130,24 @@ function findSenderCell(row: HTMLElement): HTMLElement | null {
   // ITI-016: check the row itself first. Attributes can live on the row
   // element rather than on a descendant, so querySelector-only scanning would
   // miss them and fall back to reading title/aria-label off the wrong element.
+  // HIGH-06: apply isInsideRecipientWidget here too — otherwise a row that
+  // carries the email attribute on a recipient widget element (To/Cc/Bcc
+  // spans) would be selected as the "sender cell" and read for title/aria,
+  // reintroducing the false-sender problem isInsideRecipientWidget exists to
+  // prevent.
   if (
     row.hasAttribute("email") ||
     row.hasAttribute("data-email") ||
     row.hasAttribute("data-hovercard-id")
   ) {
-    return row;
+    if (!isInsideRecipientWidget(row)) return row;
   }
-  return row.querySelector<HTMLElement>("[email], [data-email], [data-hovercard-id]") ?? null;
+  for (const el of row.querySelectorAll<HTMLElement>(
+    "[email], [data-email], [data-hovercard-id]",
+  )) {
+    if (!isInsideRecipientWidget(el)) return el;
+  }
+  return null;
 }
 
 function observe(source: SenderIdentity["source"], raw: string): SenderObservation {

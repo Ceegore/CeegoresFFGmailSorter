@@ -28,8 +28,9 @@
     "webext:lint": "web-ext lint --source-dir dist --warnings-as-errors",
     "webext:run": "web-ext run --source-dir dist --firefox-profile ./.firefox-profile --keep-profile-changes",
     "verify": "npm run verify:spec-hash && npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run verify:no-network && npm run verify:manifest && npm run verify:dist && npm run webext:lint && npm run test:e2e && npm run verify:security",
-    "package": "node scripts/package.mjs",
-    "release:check": "npm ci && npm run verify && npm run package"
+    "package-artifacts": "node scripts/package.mjs",
+    "package": "npm run release:check",
+    "release:check": "npm ci && npm run verify && npm run package-artifacts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

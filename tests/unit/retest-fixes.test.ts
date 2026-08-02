@@ -51,8 +51,22 @@ describe("Fix #1: evidence-driven search submission fallback chain", () => {
    * no-op (click does nothing); only the form's submit handler actually changes
    * the route so evidence can be seen. This proves the chain falls through from
    * the button to the form method.
+   *
+   * HIGH-03: the button must be type="button", NOT type="submit". With
+   * type="submit" inside a form, a plain click triggers the form's submit
+   * handler directly (the submit succeeds and navigates), so the fallback chain
+   * never activates — the test would pass even without the chain logic. Using
+   * type="button" makes the click a genuine no-op, so the chain must walk from
+   * the button method to the form.requestSubmit method before navigation
+   * happens. We return click/requestSubmit spies so the test can assert that the
+   * button was clicked (the first method was tried) AND that requestSubmit was
+   * eventually invoked (the fallback method that actually navigated).
    */
-  function buildSearchDomWhereButtonIsNoopAndFormNavigates(): HTMLInputElement {
+  function buildSearchDomWhereButtonIsNoopAndFormNavigates(): {
+    readonly box: HTMLInputElement;
+    readonly clickSpy: ReturnType<typeof vi.fn>;
+    readonly requestSubmitSpy: ReturnType<typeof vi.fn>;
+  } {
     const landmark = document.createElement("div");
     landmark.setAttribute("role", "search");
     const form = document.createElement("form");
@@ -60,13 +74,26 @@ describe("Fix #1: evidence-driven search submission fallback chain", () => {
     box.type = "text";
     box.setAttribute("aria-label", "Suche");
     const button = document.createElement("button");
-    button.type = "submit";
+    // HIGH-03: type="button" so clicking does NOT submit the form. A "submit"
+    // button would trigger the submit listener directly and navigate, masking
+    // whether the fallback chain was actually exercised.
+    button.type = "button";
     button.setAttribute("aria-label", "Suche");
     button.textContent = "Suche";
     form.append(box, button);
     landmark.append(form);
     document.body.append(landmark);
-    // The real submit button is a no-op: clicking it must NOT navigate.
+    // HIGH-03: count button clicks to prove the button method was attempted.
+    const clickSpy = vi.fn();
+    button.addEventListener("click", clickSpy);
+    // HIGH-03: spy on requestSubmit to prove the form method is the one that
+    // actually drove the navigation. Replace the prototype method so the real
+    // submission still flows through the form's submit listener below.
+    const requestSubmitSpy = vi.fn(() => {
+      HTMLFormElement.prototype.requestSubmit.call(form);
+    });
+    form.requestSubmit = requestSubmitSpy;
+    // The button is a no-op: clicking it must NOT navigate.
     // form.requestSubmit(), however, DOES navigate (installs the mail list).
     form.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -83,12 +110,12 @@ describe("Fix #1: evidence-driven search submission fallback chain", () => {
       main.append(list);
       document.body.append(main);
     });
-    return box;
+    return { box, clickSpy, requestSubmitSpy };
   }
 
   it("falls through a no-op button to form.requestSubmit and resolves evidence", async () => {
     installLocation("#inbox");
-    buildSearchDomWhereButtonIsNoopAndFormNavigates();
+    const { clickSpy, requestSubmitSpy } = buildSearchDomWhereButtonIsNoopAndFormNavigates();
     const { submitAndWaitUntilReady } = await import("@/gmail/search-controller");
     const evidence = await submitAndWaitUntilReady(
       'in:inbox "from:x@example.com"',
@@ -97,6 +124,10 @@ describe("Fix #1: evidence-driven search submission fallback chain", () => {
     );
     expect(evidence.mailListDetected).toBe(true);
     expect(evidence.routeChanged).toBe(true);
+    // HIGH-03: the no-op button method was tried first...
+    expect(clickSpy).toHaveBeenCalled();
+    // ...and the form.requestSubmit fallback is what actually navigated.
+    expect(requestSubmitSpy).toHaveBeenCalled();
   });
 
   it("throws when every submission method is a no-op and evidence never arrives", async () => {
@@ -382,10 +413,14 @@ describe("Fix #5: recipient matching word-boundary (no false positive on 'Today'
   it("an actual 'To' recipient label still masks its child email (no false sender)", async () => {
     const { extractSenderFromRow } = await import("@/analyzer/sender-extractor");
     const row = document.createElement("div");
-    // A genuine recipient widget: aria-label contains the word "To" as a
-    // standalone whitespace-separated token (word-match ~= matches this).
+    // A genuine recipient widget. HIGH-05: Gmail renders recipient labels with
+    // the colon attached ("To:", "Cc:", "Bcc:", "Empfänger:") as a SINGLE token,
+    // which the old CSS `~=` word-match selector could NOT match. The fix uses a
+    // regex that matches the colon-bearing form specifically, so we test the
+    // realistic "To:" markup rather than the bare word "To" (which is now
+    // intentionally NOT masked to avoid colliding with labels like "Toggle").
     const toBox = document.createElement("span");
-    toBox.setAttribute("aria-label", "To carol@example.com");
+    toBox.setAttribute("aria-label", "To: carol@example.com");
     const emailSpan = document.createElement("span");
     emailSpan.setAttribute("email", "carol@example.com");
     toBox.append(emailSpan);

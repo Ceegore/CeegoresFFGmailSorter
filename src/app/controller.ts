@@ -70,6 +70,11 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
   // the user navigated away (a label, a thread, settings) mid-flow, which must
   // invalidate immediately rather than be masked by the in-flight flag.
   let expectedPreSearchRoute: string | null = null;
+  // MEDIUM-04: the search-results route captured after the search resolves.
+  // During the post-search grace window we accept ONLY this exact route — not
+  // every same-account route — so a navigation away from the results (e.g. the
+  // user clicking a label) invalidates even within the grace period.
+  let expectedPostSearchRoute: string | null = null;
 
   const dispatch = (event: AppEvent): { accepted: boolean } => {
     return store.dispatch(event);
@@ -199,6 +204,9 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
           // first 2.5s.
           expectedRouteGraceUntil = performance.now() + 500;
         }
+        // MEDIUM-04: capture the search-results route so the grace window only
+        // accepts this exact route (not every same-account route).
+        expectedPostSearchRoute = `${location.pathname}${location.search}#${location.hash}`;
         // Empty results end the workflow for this group with an error.
         if (evidence.emptyStateDetected && !evidence.mailListDetected) {
           dispatch({
@@ -317,31 +325,48 @@ export function createAppController(store: Store<AppState, AppEvent>): AppContro
     },
     invalidateOnRouteChange(): void {
       // BUG-004/035: ignore route changes the workflow itself is driving.
-      if (expectedRouteTransition || performance.now() < expectedRouteGraceUntil) {
-        // CUR-009: even during the grace window (or an in-flight transition),
-        // a switch to a different account slot is never expected — it means the
-        // user changed accounts mid-flow. Invalidate immediately so analysis
-        // from the previous account is never resurfaced.
-        const currentSlot = detectAccountSlot();
+      // CUR-009: even during an expected transition or the grace window, a
+      // switch to a different account slot is never expected — it means the
+      // user changed accounts mid-flow. Invalidate immediately so analysis
+      // from the previous account is never resurfaced.
+      const currentSlot = detectAccountSlot();
+      const inFlight = expectedRouteTransition;
+      const inGrace = performance.now() < expectedRouteGraceUntil;
+      if (inFlight || inGrace) {
         if (currentSlot !== expectedAccountSlot) {
-          // Account changed during grace — fall through to hard invalidation.
-        } else if (expectedRouteTransition && expectedPreSearchRoute !== null) {
+          // Account changed — fall through to hard invalidation.
+        } else if (inFlight && expectedPreSearchRoute !== null) {
           // CUR-019: same account, in-flight search. The search itself is
           // expected to transition the route TO a #search route. Any other
           // route change (to a label, a thread, settings, etc.) is an
           // unrelated user navigation and must invalidate immediately instead
           // of being masked by the in-flight flag.
           const currentRoute = `${location.pathname}${location.search}#${location.hash}`;
-          if (currentRoute === expectedPreSearchRoute) return; // hasn't changed yet
-          if (/#search\b/iu.test(location.hash)) return; // navigated TO search — expected
+          if (currentRoute === expectedPreSearchRoute) return; // hasn't navigated yet
+          // Accept any search route — Gmail's actual hash format varies and may
+          // not contain the raw query string, so exact matching is unreliable.
+          // The query-mismatch check in waitForEvidence catches wrong-query
+          // searches.
+          if (/#search\b/iu.test(location.hash)) return;
           // Any other route change during the in-flight search is unexpected —
           // fall through to hard invalidation.
+        } else if (inGrace && expectedPostSearchRoute !== null) {
+          // MEDIUM-04: same account, post-search grace window. Only accept the
+          // EXACT search-results route captured after the search resolved — not
+          // every same-account route — so a navigation away from the results
+          // invalidates even within the grace period.
+          const currentRoute = `${location.pathname}${location.search}#${location.hash}`;
+          if (currentRoute === expectedPostSearchRoute) return;
+          // Route changed during grace — fall through to hard invalidation.
         } else {
-          return; // same account, grace window — allow it
+          return; // same account, no captured route to compare — allow it
         }
       }
       abortController?.abort();
       abortController = null;
+      // MEDIUM-04: clear the post-search route once invalidated so a stale
+      // reference can't match a later route.
+      expectedPostSearchRoute = null;
       dispatch({ type: "ROUTE_CONTEXT_INVALIDATED" });
     },
     setFilter(value: string): void {

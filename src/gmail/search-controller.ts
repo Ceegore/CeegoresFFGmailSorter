@@ -8,7 +8,7 @@ import { delay } from "@/shared/time";
 import { gmailTextPatterns, matchesAny } from "@/gmail/gmail-text-patterns";
 import { detectAccountSlot, findMessageListElement } from "@/gmail/dom-detectors";
 import { isInteractable } from "@/shared/dom";
-import { appError, GisoError, throwAppError } from "@/shared/errors";
+import { appError, throwAppError } from "@/shared/errors";
 
 export function buildInboxSenderQuery(email: string): string {
   const normalized = normalizeEmail(email);
@@ -218,10 +218,30 @@ function isLoading(): boolean {
  * rather than the real submit), the form/Enter fallbacks were never tried and
  * the whole call deadlocked until timeout. Instead, this function now drives the
  * fallback itself: it tries each submission method and, after each, runs a short
- * 2-second evidence probe to see whether the search actually started (route/list
- * fingerprint changed). Only when a method produces no evidence within 2s does
- * it move on to the next. Hard failures (abort, related-only, sustained query
- * mismatch) propagate immediately and are never retried via another method.
+ * "did it start?" probe (route/list fingerprint changed) to see whether the
+ * search actually began. Only when a method produces no sign of navigation does
+ * it move on to the next.
+ *
+ * HIGH-01: in the fallback loop, only plain timeout errors (from waitForEvidence
+ * surfacing as a non-GisoError "Mutation wait timed out") are treated as "this
+ * submission method didn't produce results — try the next." Every structured
+ * GisoError (account change, related-only, mismatch, etc.) is a hard failure
+ * that another method cannot fix, so it is rethrown immediately rather than
+ * being retried via a different method (which previously caused cross-account
+ * submissions).
+ *
+ * HIGH-02: the loop no longer runs the FULL readiness check (mail list + no
+ * loading + stability) inside each per-method attempt. A genuinely slow search
+ * that needs >2s to fully load would fail that full probe and get retried with
+ * the next method, submitting the search a second time. Now the per-method probe
+ * only checks that navigation STARTED (route/list fingerprint changed); once
+ * started, a single full readiness wait runs with the remaining time.
+ *
+ * HIGH-04: a single total deadline (performance.now() + timeoutMs) bounds the
+ * whole call. Each per-method probe uses at most 3s (clamped to the remaining
+ * total), and the final readiness wait gets whatever time remains. With three
+ * methods the function can no longer run 3×3s + fullTimeout (21+s); it stays
+ * within the configured timeoutMs.
  */
 export async function submitAndWaitUntilReady(
   query: string,
@@ -231,6 +251,11 @@ export async function submitAndWaitUntilReady(
   assertNotAborted(signal);
   const timeoutMs = options.timeoutMs ?? 12_000;
   const stabilityMs = options.stabilityMs ?? 250;
+  // HIGH-04: a single total deadline bounds the whole call (per-method probes
+  // + the final readiness wait). Previously 3 methods × 2s probe + a full
+  // timeoutMs wait could take 21+ seconds; now everything stays within
+  // timeoutMs measured from entry.
+  const totalDeadline = performance.now() + timeoutMs;
 
   const baselineRoute = routeFingerprint();
   const baselineList = listFingerprint();
@@ -274,62 +299,64 @@ export async function submitAndWaitUntilReady(
     );
   });
 
-  // CUR-002: try each method with a short 2-second evidence probe. The outer
-  // safeRun already provides one controlled retry on recoverable errors, so this
-  // loop does NOT re-implement a timeout retry — it only walks the fallback
-  // chain once, and a hard failure (abort / related-only / mismatch) short-
-  // circuits the whole attempt.
-  let lastError: unknown;
+  // CUR-002 / HIGH-02: try each method with a short "did it start?" probe. The
+  // probe is intentionally lightweight — it only checks that navigation began
+  // (route/list fingerprint changed) rather than running the FULL readiness
+  // check (mail list + no loading + stability). A real slow search that needs
+  // >2s to fully load would fail a full probe and get retried with the next
+  // method, submitting the search a second time; a started-check avoids that.
+  // The outer safeRun already provides one controlled retry on recoverable
+  // errors, so this loop does NOT re-implement a timeout retry — it only walks
+  // the fallback chain once, and a hard failure short-circuits the whole
+  // attempt.
+  let started = false;
   for (const method of submitMethods) {
     assertNotAborted(signal);
     method();
-    try {
-      // Short probe: did the search start within 2 seconds?
-      return await waitForEvidence(
-        query,
-        baselineRoute,
-        baselineList,
-        accountSlot,
-        signal,
-        2_000,
-        stabilityMs,
-      );
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") throw error;
-      // Related-only and a sustained query mismatch are hard failures — retrying
-      // via another submission method cannot change Gmail's result set, so do not
-      // walk the chain further.
-      if (error instanceof GisoError && error.app.code === "GISO-SEARCH-RELATED-ONLY-001") {
-        throw error;
+    // HIGH-02/HIGH-04: wait up to 3 seconds (clamped to the remaining total)
+    // for ANY sign the search started.
+    const startedDeadline = Math.min(performance.now() + 3_000, totalDeadline);
+    while (performance.now() < startedDeadline) {
+      assertNotAborted(signal);
+      await delay(100, signal);
+      if (routeFingerprint() !== baselineRoute || listFingerprint() !== baselineList) {
+        started = true;
+        break;
       }
-      if (error instanceof GisoError && error.app.code === "GISO-SEARCH-MISMATCH-001") {
-        throw error;
+      // HIGH-01: an account change is a hard failure even mid-probe — another
+      // submission method cannot fix it, and continuing would submit the search
+      // against the wrong account.
+      if (detectAccountSlot() !== accountSlot) {
+        throwAppError(
+          appError(
+            "GISO-SEARCH-ACCOUNT-001",
+            "searchFailed",
+            "account slot changed during search",
+            false,
+          ),
+        );
       }
-      lastError = error;
-      // A timeout (search did not start) — fall through to the next method.
     }
+    if (started) break; // submission confirmed — now do the full readiness wait
   }
 
-  // All methods exhausted within their 2s probes. As a last resort, retry the
-  // final method once with the full configured timeout — some searches only
-  // surface evidence after a slow network round trip that exceeds the 2s probe.
-  const lastMethod = submitMethods[submitMethods.length - 1];
-  if (lastMethod) {
-    lastMethod();
-    return await waitForEvidence(
-      query,
-      baselineRoute,
-      baselineList,
-      accountSlot,
-      signal,
-      timeoutMs,
-      stabilityMs,
-    );
-  }
-  // No submission methods were available (no button, no form, no key dispatch).
-  void lastError;
-  throwAppError(
-    appError("GISO-SEARCH-SUBMIT-001", "searchFailed", "all submission methods failed", true),
+  // HIGH-02: run ONE full readiness wait with the remaining time. This single
+  // wait handles both outcomes: if a method started the search, we wait for it
+  // to fully load; if no method started anything, the wait simply elapses and
+  // waitForEvidence throws GISO-SEARCH-TIMEOUT-001. There is no separate "last
+  // resort" re-submit — that would re-submit a possibly-already-running search.
+  // HIGH-04: always bounded by the total deadline so the whole call stays
+  // within timeoutMs (the floor of 1s lets a borderline-slow navigation still
+  // register evidence rather than failing instantly on a near-zero remainder).
+  const remainingForEvidence = Math.max(1000, totalDeadline - performance.now());
+  return await waitForEvidence(
+    query,
+    baselineRoute,
+    baselineList,
+    accountSlot,
+    signal,
+    remainingForEvidence,
+    stabilityMs,
   );
 }
 

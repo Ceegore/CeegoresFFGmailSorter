@@ -40,7 +40,26 @@ function listFingerprintForStability(list: HTMLElement): string {
       row.getAttribute("data-thread-id") ??
       row.getAttribute("data-legacy-thread-id") ??
       row.getAttribute("id");
-    ids.push(id ?? "?");
+    if (id) {
+      ids.push(id);
+    } else {
+      // MEDIUM-03: for rows without stable IDs, the previous code collapsed
+      // every such row to a literal "?", so a same-count DOM swap of ID-less
+      // rows (e.g. Gmail virtualization swapping one anonymous row for another
+      // during the stability window) produced an identical fingerprint and was
+      // NOT detected. Use a bounded hash of sender-relevant ATTRIBUTES only
+      // (never subject/content/snippet, which would make the fingerprint too
+      // brittle to transient text changes) so anonymous rows still contribute
+      // a distinguishing token.
+      const email =
+        row.getAttribute("email") ??
+        row.querySelector("[email]")?.getAttribute("email") ??
+        row.getAttribute("data-hovercard-id") ??
+        "";
+      ids.push(
+        `h:${String(email.length)}:${String(row.querySelectorAll("[email], [data-hovercard-id]").length)}`,
+      );
+    }
   }
   return `count=${String(rows.length)};ids=${ids.join(",")}`;
 }
@@ -194,6 +213,42 @@ export async function analyzeCurrentInbox(signal: AbortSignal): Promise<Analysis
     }
   }
 
+  // MEDIUM-01: after the replacement stability wait, the list may have been
+  // replaced AGAIN by Gmail during that second wait. Scanning a now-detached
+  // node would produce a stale snapshot. Verify `list.isConnected` once more;
+  // if it detached, attempt ONE final bounded re-resolve. If that also fails,
+  // throw safely rather than handing back an analysis of a detached subtree.
+  if (!list.isConnected) {
+    const finalList = findMessageListElement();
+    if (!finalList?.isConnected) {
+      throwAppError(
+        appError(
+          "GISO-LIST-001",
+          "noRows",
+          "message list repeatedly replaced during analysis",
+          true,
+        ),
+      );
+    }
+    list = finalList;
+    const finalStable = await waitForListStability(list, signal, 250, 3_000);
+    if (!finalStable) {
+      throwAppError(
+        appError(
+          "GISO-DOM-CHANGED-001",
+          "gmailNotReady",
+          "final replacement list did not stabilize",
+          true,
+        ),
+      );
+    }
+  }
+
+  // MEDIUM-02: capture the list fingerprint immediately before collecting rows
+  // so we can detect a mid-scan DOM mutation (compare again after the scan
+  // loop). Without this, Gmail replacing/reordering rows while the scan loop
+  // runs would silently produce a partial or duplicated result.
+  const preScanFingerprint = listFingerprintForStability(list);
   const rawRows = collectMessageRows(list);
   if (rawRows.length === 0) {
     throwAppError(appError("GISO-ROWS-001", "noRows", "no message rows", true));
@@ -226,6 +281,15 @@ export async function analyzeCurrentInbox(signal: AbortSignal): Promise<Analysis
     seenFingerprints.add(fingerprint.value);
     const sender: SenderIdentity = extractSenderFromRow(row);
     entries.push({ fingerprint: fingerprint.value, sender, rowIndex: index });
+  }
+
+  // MEDIUM-02: if the list mutated during the scan loop, the snapshot is no
+  // longer a faithful representation of the inbox — fail safe rather than
+  // return a possibly partial/reordered/duplicated result.
+  if (listFingerprintForStability(list) !== preScanFingerprint) {
+    throwAppError(
+      appError("GISO-DOM-CHANGED-001", "gmailNotReady", "DOM changed during analysis scan", true),
+    );
   }
 
   const groups = groupResolvedSenders(entries).sort(compareByCountThenName);

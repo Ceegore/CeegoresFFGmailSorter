@@ -28,9 +28,10 @@ if (status.trim()) {
 // (test:e2e) is intentionally omitted here because it needs the Playwright
 // browser binaries, which CI installs separately; CI runs the full `verify`
 // (including e2e) via `release:check`.
-// The source-only gate (verify:no-network) runs here; the dist-dependent gates
-// (verify:manifest, verify:dist, webext:lint) run after the fresh build below
-// so they verify the exact bytes being shipped.
+// MEDIUM-05: verify:no-network now runs AFTER the build (below) so it scans the
+// freshly built dist bytes, not just a stale/pre-existing dist. The dist-
+// dependent gates (verify:manifest, verify:dist, webext:lint) also run after
+// the build so they verify the exact bytes being shipped.
 console.log("Running verification gates...");
 await exec("npm", ["run", "verify:spec-hash"], { shell: true });
 await exec("npm", ["run", "format:check"], { shell: true });
@@ -38,7 +39,6 @@ await exec("npm", ["run", "lint"], { shell: true });
 await exec("npm", ["run", "typecheck"], { shell: true });
 await exec("npm", ["run", "test"], { shell: true });
 await exec("npm", ["run", "test:coverage"], { shell: true });
-await exec("npm", ["run", "verify:no-network"], { shell: true });
 
 // ITI-063: rebuild dist from source before packaging so a stale/older dist can
 // never be bundled into a release artifact. build.mjs resolves its own root via
@@ -57,6 +57,11 @@ await exec("npm", ["run", "verify:dist"], { shell: true });
 await exec("npm", ["run", "webext:lint"], { shell: true });
 // CUR-023: npm audit enforces no high/critical advisories in production deps.
 await exec("npm", ["run", "verify:security"], { shell: true });
+// MEDIUM-05: scan the freshly built dist (and src) for forbidden network
+// primitives AFTER the build so the exact shipped bytes are checked. Running it
+// pre-build only scanned a pre-existing (possibly stale) dist and missed any
+// violation introduced by the build itself.
+await exec("npm", ["run", "verify:no-network"], { shell: true });
 
 await rm(releaseDir, { recursive: true, force: true });
 await mkdir(releaseDir, { recursive: true });
